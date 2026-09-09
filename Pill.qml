@@ -108,11 +108,6 @@ Item {
         return (pill.powerOpen && ldPower.item) ? ldPower.item.pressFocused() : false;
     }
 
-    function powerRelease() {
-        if (pill.powerOpen && ldPower.item)
-            ldPower.item.releaseFocused();
-    }
-
     function normalizeTopNav() {
         if (navTargets.length === 0) {
             navIndex = -1;

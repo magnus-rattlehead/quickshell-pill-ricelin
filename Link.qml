@@ -8,12 +8,7 @@ import Quickshell.Bluetooth
 import Quickshell.Services.Notifications
 import "Singletons"
 
-/**
- * 繋 LINK surface: connectivity rows (auto-detected Netz, Bluetooth) over the
- * 報 INBOX notification center, with WLAN and Bluetooth drill-in subviews that
- * cross-fade in place. Owns the `subview` state machine and exposes
- * `desiredW` and `back()` for the pill's morph and Escape plumbing.
- */
+
 PillSurface {
     id: root
 
@@ -25,11 +20,7 @@ PillSurface {
     property string subview: "main"
     property int navIndex: 0
 
-    /**
-     * Subview to land on the next time the surface opens. The pill sets this from
-     * the glance that opened the surface (wifi → "wifi", inbox → "main") so the
-     * wifi glance drills straight to the network list past the connectivity rows.
-     */
+
     property string initialView: "main"
 
     readonly property real desiredW: (subview === "wifi" ? 272 : subview === "bt" ? 286 : 330) * s
@@ -38,19 +29,10 @@ PillSurface {
         ? -1
         : Math.max(0, Math.min(navIndex, mainTargets.length - 1))
 
-    /**
-     * Row-soul focus registry. Each hoverable row reports itself here; the bead
-     * docks as a glowing seam at the left edge of the focused row and hides
-     * when nothing is focused. Only the main subview participates.
-     */
+
     property Item focusRowItem: null
 
-    /**
-     * Sticky: once a row has been focused the seam stays parked on it when the
-     * pointer leaves, gliding to the next focused row instead of re-waking
-     * from the pill centre on every hover. Cleared only when the surface
-     * closes.
-     */
+
     function reportRowHover(item, hovered) {
         if (hovered)
             focusRowItem = item;
@@ -110,10 +92,7 @@ PillSurface {
 
     property string ethIp: ""
 
-    /**
-     * Pops one navigation level: drill-in back to main returns true, main
-     * returns false so the caller closes the surface instead.
-     */
+
     function back() {
         if (subview !== "main") {
             subview = "main";
@@ -222,10 +201,7 @@ PillSurface {
         onTriggered: ipProc.running = true
     }
 
-    /**
-     * Ember mark: a small flame-glow dot over a soft halo, the unread marker
-     * shared by the header badge and unread notification titles.
-     */
+
     component Ember: Item {
         id: ember
         property real size: 4 * root.s
@@ -292,11 +268,7 @@ PillSurface {
         }
     }
 
-    /**
-     * Single inbox entry: icon tile or diamond, body text, ×N coalesce badge,
-     * age label that cross-fades into a dismiss glyph on hover. Critical
-     * entries gain a vermilion left hairline and cream emphasis.
-     */
+
     component NotifRow: Rectangle {
         id: nrow
 

@@ -1,12 +1,7 @@
 import QtQuick
 import "Singletons"
 
-/**
- * Single-line text that ping-pong scrolls when wider than the available width,
- * so long track and artist names stay readable. Caller sets the width (e.g.
- * via anchors) and `active` to gate the motion. The label snaps to whole pixels
- * so NativeRendering stays crisp while it scrolls.
- */
+
 Item {
     id: root
 
@@ -66,12 +61,7 @@ Item {
     onOverflowingChanged: sync()
     Component.onCompleted: sync()
 
-    /**
-     * Fully imperative start/stop: a `running` binding here would be severed
-     * by the first imperative stop() and leave the loop animating forever
-     * inside a hidden surface. Re-syncing on overflow changes also refreshes
-     * the captured from/to endpoints after a width change.
-     */
+
     function sync() {
         anim.stop();
         root.scrollX = 0;

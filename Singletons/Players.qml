@@ -5,13 +5,7 @@ import Quickshell
 import Quickshell.Services.Mpris
 import Quickshell.Hyprland
 
-/**
- * The one now-playing source the pill views read: the media surface, the source
- * switcher and the OSD. Selection is by player object so the
- * pick survives metadata churn and falls away when that player's process dies.
- * `active` is the player you last picked by hand, else the one auto-tracked by
- * playback, which holds against a background tab that autoplays.
- */
+
 Singleton {
     id: root
 
@@ -69,12 +63,7 @@ Singleton {
             preferred = null;
     }
 
-    /**
-     * A playing player always wins, with the recently-played one preferred while
-     * it plays. Only when nothing is playing do we hold the paused preferred, so
-     * pausing your music doesn't hand the surface to a paused background tab, yet
-     * actually starting another player switches to it.
-     */
+
     readonly property var autoPick: {
         var l = root.list;
         if (l.length === 0)
@@ -117,11 +106,7 @@ Singleton {
                     Players.announce(modelData);
                 }
             }
-            /**
-             * Browser DRM players (Netflix in Brave) often land their title while
-             * isPlaying still reads false and never cleanly toggle it, so the
-             * active player announces on any real title, not only mid-playback.
-             */
+
             onTitleChanged: {
                 if (Players.ready && title.length > 0 && (playing || modelData === Players.active))
                     Players.announce(modelData);
@@ -131,30 +116,26 @@ Singleton {
 
     readonly property bool has: active !== null
     readonly property bool playing: has && active.isPlaying
-    /** Falls back to the service label so a titleless DRM stream still reads as its site. */
+
     readonly property string title: has ? refineTitle(active, active.trackTitle || labelOf(active)) : ""
     readonly property string artist: has ? Theme.joinArtists(active.trackArtists, active.trackArtist) : ""
     readonly property string trackUrl: urlOf(active)
     readonly property string artUrl: artUrlFor(active)
     readonly property real lengthSec: durationFor(active)
     readonly property bool durationKnown: has && lengthSec > 0 && !live
-    /** A bogus near-INT64 length is how live streams report "no end". */
+
     readonly property bool live: has && liveFor(active)
     readonly property string source: serviceOf(active)
     readonly property string serviceLabel: source.length > 0
         ? source.charAt(0).toUpperCase() + source.slice(1) : ""
 
-    /** Browsers reuse one art path per video, so fold player and title in to catch a new song. */
+
     function keyFor(p) {
         return p ? ((p.dbusName || "") + "|" + (p.trackTitle || "") + "|" + artUrlFor(p)) : "";
     }
     readonly property string trackKey: has ? keyFor(active) : ""
 
-    /**
-     * Fired when a player starts, pauses or changes track in a way worth a flash.
-     * The OSD listens and announces that player, even one that is not the active
-     * surface source, so starting a video over your music still tells you.
-     */
+
     signal announce(var player)
 
     function urlOf(p) {
@@ -226,11 +207,7 @@ Singleton {
         return p && p.trackTitle ? p.trackTitle : "";
     }
 
-    /**
-     * The player's own themed app icon, matched off its desktop entry so any
-     * source carries its real logo. Matching is the same window-to-entry pass the
-     * tray uses, with a direct icon-theme lookup as the fallback.
-     */
+
     function appIconFor(p) {
         if (!p)
             return "";
@@ -271,7 +248,7 @@ Singleton {
         return parts.length >= 2 ? parts[parts.length - 2] : parts[0];
     }
 
-    /** Browsers with no page url tag the site onto the title ("... | Spotify"); trust only known sites. */
+
     function siteFromTitle(t) {
         var m = t.match(/[|\-–—]\s*([A-Za-z][A-Za-z0-9]+)\s*$/);
         if (!m)
@@ -311,12 +288,7 @@ Singleton {
         return "";
     }
 
-    /**
-     * Netflix MPRIS is a stub: xesam:title is the literal page title "Netflix"
-     * and there is no art. The public title page still ships og:title/og:image
-     * for any video id, so resolve the real show name and its cover async and
-     * swap them in wherever the raw metadata would just say "Netflix".
-     */
+
     property string netflixName: ""
     property string netflixArt: ""
     property string netflixId: ""
@@ -404,7 +376,7 @@ Singleton {
         xhr.send();
     }
 
-    /** Swaps a stub browser title for the resolved show name where one exists. */
+
     function refineTitle(p, raw) {
         if (p && netflixId.length > 0 && netflixName.length > 0
             && netflixIdOf(urlOf(p)) === netflixId
@@ -413,7 +385,7 @@ Singleton {
         return raw;
     }
 
-    /** Twitch exposes no MPRIS art; resolve the streamer avatar async, live preview stands in. */
+
     property string twitchAvatar: ""
     property string twitchChannel: ""
     onTrackUrlChanged: {

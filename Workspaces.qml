@@ -5,20 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Hyprland
 import "Singletons"
 
-/**
- * Workspace dots for one monitor. No numbers, no icons. Active one is a larger
- * filled vermillion dot; the rest are small and dim, brightening on hover.
- * Clicking a dot focuses that workspace via the Hyprland-lua dispatcher. Active
- * marker tracks the monitor's live active workspace name from the Hyprland
- * model.
- *
- * The dot range comes from this monitor's workspace rules ([[Workspacerules]]),
- * so a rule-driven setup (e.g. monitors.lua splitting 1-5 / 6-10 across two
- * screens) always shows every assigned dot. A setup with no rules (the usual
- * single-monitor case) falls back to the workspaces Hyprland currently has on
- * this monitor plus the active one, so dots still appear and grow as new
- * workspaces are visited.
- */
+
 Item {
     id: workspaces
 
@@ -101,11 +88,7 @@ Item {
 
     readonly property int activeIndex: range.indexOf(parseInt(activeName))
 
-    /**
-     * Centre x of a dot slot from target layout widths (active stick is wider).
-     * Uses the animation end values, so a focus marker aimed here lands where
-     * the dot settles and doesn't chase the width Behavior.
-     */
+
     function slotCenterX(idx) {
         let x = 0;
         for (let i = 0; i < idx; i++)

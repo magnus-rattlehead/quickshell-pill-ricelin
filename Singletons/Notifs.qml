@@ -112,10 +112,7 @@ Singleton {
         root.history = root.history.filter(function(h) { return !gone[h.id]; });
     }
 
-    /**
-     * Focus the app's Hyprland window (workspace switch included) by matching the
-     * notification's desktopEntry/appName against the live window classes.
-     */
+
     function raiseWindow(n) {
         if (!n) return;
         var token = String(n.desktopEntry && n.desktopEntry.length ? n.desktopEntry : (n.appName || "")).toLowerCase();
@@ -125,10 +122,7 @@ Singleton {
             "sh", token]);
     }
 
-    /**
-     * Open the app behind a notification: invoke its default action when present,
-     * then jump to the app's window, mirroring stock notification-center behavior.
-     */
+
     function activateNotif(n) {
         if (!n) return;
         var acts = n.actions || [];
@@ -141,7 +135,7 @@ Singleton {
         raiseWindow(n);
     }
 
-    /** Inbox-row entry wrapper: activate the app, then dismiss the entry. */
+
     function activateEntry(e) {
         if (!e || !e.n) return;
         activateNotif(e.n);
@@ -207,14 +201,7 @@ Singleton {
         root.expandedApps = e;
     }
 
-    /**
-     * Bind the history-snapshot handler to a notification's `closed` signal once.
-     * `keepOnReload` re-runs Component.onCompleted on every QS reload over the
-     * still-tracked notifications, so the id set gates re-hooks: without it each
-     * reload would stack another handler and a single close would push duplicate
-     * history rows. The id is cleared inside the handler so a later notification
-     * reusing the id re-hooks cleanly.
-     */
+
     function hookClosed(n) {
         if (root.hookedIds[n.id])
             return;

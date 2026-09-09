@@ -2,16 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 import "Singletons"
 
-/**
- * Hand-drawn wifi glyph: three concentric arcs over a base dot, the lit-arc
- * count standing in for signal strength (>0.66 lights all three, >0.33 two,
- * >0 one). Lit strokes use iconDim, unlit a dim icon tint, so a radio-on but
- * unconnected glyph reads as a dim fan. When the radio is off the glyph fades
- * further and a diagonal slash crosses it. Paths live in a 24x24 space; the
- * arcs-and-dot bounding box is centred within the item on both axes, and the
- * off-state slash rides the same transform so it stays registered with them.
- * Every stroke weight scales by `s`.
- */
+
 Item {
     id: root
 

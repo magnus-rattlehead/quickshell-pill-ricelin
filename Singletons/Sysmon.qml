@@ -3,12 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-/**
- * System-vitals backend for the SYSTEM surface. Polling only runs while the
- * surface is open. GPU telemetry is modelled as a list so multi-GPU machines can
- * show every adapter that is visible locally, even when a vendor-specific stats
- * backend is unavailable.
- */
+
 Singleton {
     id: root
 

@@ -3,17 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Singletons"
 
-/**
- * Clipboard surface: search field over the cliphist history, drawn as one of
- * the pill's surfaces. Entries come from the Cliphist singleton snapshot so the
- * list is populated as soon as the pill finishes morphing. Typing filters by
- * substring, Return copies the selected entry and closes, hovering a row
- * cross-fades a dismiss glyph that deletes it (Ctrl+X does the same for the
- * keyboard selection). Image entries render their cached thumbnail beside the
- * size label. Holding the 掃 glyph for the heat duration wipes the whole
- * history; progress sweeps along the header divider and drains on early
- * release.
- */
+
 PillSurface {
     id: root
 
@@ -25,12 +15,7 @@ PillSurface {
     property string query: ""
     property int selectedIndex: 0
 
-    /**
-     * Window-coordinate position of the last hover event that was allowed to
-     * move the selection. Rows sliding under a stationary cursor during
-     * keyboard scrolling produce hover events at an unchanged window position,
-     * which must not steal the keyboard selection.
-     */
+
     property point lastPointer: Qt.point(-1, -1)
 
     readonly property point caretPoint: {

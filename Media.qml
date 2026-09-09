@@ -5,15 +5,7 @@ import QtQuick.Effects
 import Quickshell.Widgets
 import "Singletons"
 
-/**
- * Now-playing card. Album art bleeds edge-to-edge on the left, faded into the
- * card; a blurred copy glows through a near-opaque warm wash behind everything.
- * Right of the cover: title, artist, a dim source/time line, the play/pause
- * seal (奏/休) flanked by 前/次 skips. Playback runs as a brush stroke along the
- * bottom, its painted head the dock for the pill's soul bead. All now-playing
- * data comes from [[Players]]; when two or more players run, the source token
- * glows into a bubble that opens a picker.
- */
+
 PillSurface {
     id: root
 
@@ -26,11 +18,7 @@ PillSurface {
     readonly property bool durationKnown: Players.durationKnown
     readonly property string serviceLabel: Players.serviceLabel
 
-    /**
-     * Art only decodes while this monitor's surface is open, keyed on the track
-     * so a browser reusing one file path still reloads on a new song. The shared
-     * url means every monitor shows the same cover, never a stale neighbour.
-     */
+
     readonly property string coverSource: {
         if (!root.active)
             return "";
@@ -39,7 +27,7 @@ PillSurface {
             return "";
         return u.indexOf("file:") === 0 ? u + "#" + Players.trackKey : u;
     }
-    /** Latched on first decode so the fallback glyph doesn't flash back while a track change reloads behind the retained cover. */
+
     property bool everReady: false
     onCoverSourceChanged: if (coverSource.length === 0) everReady = false
 
@@ -50,7 +38,7 @@ PillSurface {
     property bool dragging: false
     readonly property real frac: dragging ? dragFrac : playFrac
 
-    /** Source picker is open; only reachable when more than one player runs. */
+
     property bool picking: false
     readonly property bool canPick: Players.pickable.length > 1
     onActiveChanged: if (!active) picking = false
@@ -150,7 +138,7 @@ PillSurface {
         }
     }
 
-    /** Round album swatch that tags a source, falls back to a warm tile. */
+
     component ArtDot: ClippingRectangle {
         id: dot
         property string url: ""

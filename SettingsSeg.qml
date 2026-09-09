@@ -3,12 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Singletons"
 
-/**
- * Mini-segmented choice control. `options` is a list of `{ label, value }`; the
- * pill whose value equals `value` lights with a flame tint. Picking a pill emits
- * `picked(value)`; selection keys off the source value, never a child's effective
- * visibility. The host passes `s` for scale.
- */
+
 Rectangle {
     id: seg
 
@@ -17,11 +12,7 @@ Rectangle {
     property var value
     signal picked(var value)
 
-    /**
-     * When `flushLeft`, the control shifts left by the first option's text inset
-     * so that text lines up with x=0 of where the control is placed, rather than
-     * the pill edge sitting there.
-     */
+
     property bool flushLeft: false
 
     readonly property real pad: 1

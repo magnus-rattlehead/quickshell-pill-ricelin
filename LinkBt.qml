@@ -5,13 +5,7 @@ import Quickshell.Io
 import Quickshell.Bluetooth
 import "Singletons"
 
-/**
- * Bluetooth drill-in for the link surface: back chevron, scan with 25s
- * auto-stop, adapter toggle, live device list. Known devices use the
- * Quickshell connect/disconnect calls; unpaired devices run a bluetoothctl
- * pair-trust-connect flow with an inline ember while running and a transient
- * failure line.
- */
+
 Item {
     id: root
 
@@ -36,11 +30,7 @@ Item {
         return out;
     }
 
-    /**
-     * BlueZ hands the cache out in arbitrary order; sort connected first,
-     * then paired, then named devices, nameless MACs last so a discovery scan
-     * doesn't churn the useful rows around.
-     */
+
     readonly property var devicesSorted: devices.slice().sort(function(a, b) {
         function rank(d) {
             if (!d) return 3;
@@ -71,11 +61,7 @@ Item {
         return targets;
     }
 
-    /**
-     * Address of the known device whose inline confirm row (disconnect or
-     * connect, plus forget) is open, mirroring the wifi drill-in's expanded
-     * SSID.
-     */
+
     property string expandedAddress: ""
 
     implicitHeight: listFrame.y + listFrame.height
@@ -154,11 +140,7 @@ Item {
         return Math.round(b);
     }
 
-    /**
-     * Click dispatch for a device row. A connected or paired device toggles
-     * the inline confirm row rather than acting at once; an unpaired device
-     * runs the bluetoothctl pair-trust-connect flow.
-     */
+
     function activateDevice(d) {
         if (!d)
             return;
@@ -182,11 +164,7 @@ Item {
             d.disconnect();
     }
 
-    /**
-     * Unpairs through the Quickshell device object, the same layer the
-     * connect and disconnect calls use; BlueZ drops the bond and the row
-     * falls back to its Pair chip.
-     */
+
     function forgetDevice(d) {
         expandedAddress = "";
         if (d && typeof d.forget === "function")

@@ -10,12 +10,7 @@ Item {
     property string placeholder: ""
     property string counterText: ""
 
-    /**
-     * Map Left/Right to the moved() signal instead of text-cursor motion. For a
-     * horizontal result strip the arrows should page the strip; without this the
-     * field swallows them until the caret sits at a text boundary, so navigation
-     * stalls mid-query.
-     */
+
     property bool horizontalNav: false
     readonly property alias input: field
     property alias text: field.text

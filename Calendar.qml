@@ -5,24 +5,6 @@ import QtQuick.Controls
 import Quickshell
 import "Singletons"
 
-/**
- * Calendar surface: a weather glance, the month grid, and an event editor that
- * grows out to the right when a day is picked.
- *
- * The centre is the month grid (header with month/year and prev/next nav, weekday
- * row, day cells sized to exactly the rows the month needs). Today keeps its warm
- * frame and the Ame ring; a day that holds a stored event marks its number warm
- * with a small ember dot. To the left, when Weather.ready, a slim panel shows the
- * current temperature, the condition kanji and city, and the next few hours. To
- * the right, selecting a day slides open an editor listing that day's events with
- * a delete tap and an add form (start, end, title).
- *
- * The date math (offset/monthLen/rows/today/shiftMonth/resetToday) is unchanged;
- * the grid is wrapped, not rewritten. implicitWidth sums the visible panels so the
- * pill morphs wider as the editor opens; implicitHeight still drives the height
- * down to the live row count. View date resets to the real today on every open,
- * and Ame keeps targeting today via ameForm/amePoint.
- */
 PillSurface {
     id: root
 
@@ -52,19 +34,11 @@ PillSurface {
     readonly property bool weatherShown: Weather.ready
     readonly property bool editorShown: selectedDate.length > 0
 
-    /**
-     * Selection: selectedDate is the picked day (and a span's start), selEndDate
-     * the span's last day or "" for a single day. pickingEnd arms the grid so the
-     * next day click closes the span; hoverDay previews that span live while the
-     * pointer moves. Keys are zero-padded "YYYY-MM-DD" so a string compare spans
-     * them, even across months.
-     */
     property string selectedDate: ""
     property string selEndDate: ""
     property bool pickingEnd: false
     property int hoverDay: 0
 
-    /** Span end the grid paints: the live hover while arming, else the set end. */
     readonly property string rangeEndKey: pickingEnd && hoverDay > 0 ? dateKey(hoverDay) : selEndDate
     readonly property string rangeLo: {
         if (selectedDate.length === 0) return "";
@@ -82,14 +56,12 @@ PillSurface {
         return key.length > 0 && rangeLo.length > 0 && key >= rangeLo && key <= rangeHi;
     }
 
-    /** "ddd d MMM" for a single day, "d MMM" without the weekday. */
     function fmtDay(key, dow) {
         var p = key.split("-");
         var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
         return loc.toString(d, dow ? "ddd d MMM" : "d MMM");
     }
 
-    /** "22–25 Jun" within a month, "29 Jun – 2 Jul" across one. */
     function fmtSpan(loKey, hiKey) {
         var lp = loKey.split("-");
         var hp = hiKey.split("-");
@@ -102,7 +74,6 @@ PillSurface {
 
     readonly property real gridHeight: grid.y + rows * cellH + (rows - 1) * rowGap
 
-    /** The weather panel and the editor each add their column plus a divider gutter only when visible. */
     implicitWidth: gridW
         + (weatherShown ? weatherW + gutter : 0)
         + (editorShown ? editorW + gutter : 0)
@@ -112,13 +83,6 @@ PillSurface {
     readonly property bool todayVisible: viewMonth === today.getMonth()
         && viewYear === today.getFullYear()
 
-    /**
-     * Ame is the focus cursor: it rings the picked day, or today when this month
-     * is in view with nothing picked. Browsing another month with nothing picked
-     * leaves no focus, so the bead parks as a soul ember on the 暦 header glyph
-     * (the calendar's lantern, mirroring Sysmon) rather than floating over a
-     * random date cell — which is what read as Ame jumping somewhere random.
-     */
     readonly property bool selectedInView: selectedDate.length > 0
         && Number(selectedDate.split("-")[1]) === viewMonth + 1
         && Number(selectedDate.split("-")[0]) === viewYear
@@ -162,7 +126,6 @@ PillSurface {
             && viewYear === today.getFullYear();
     }
 
-    /** "YYYY-MM-DD" for a day number in the viewed month, zero-padded for keys. */
     function dateKey(day) {
         var m = viewMonth + 1;
         var mm = m < 10 ? "0" + m : "" + m;
@@ -193,12 +156,6 @@ PillSurface {
         hoverDay = 0;
     }
 
-    /**
-     * Click handling: while arming a span the next click sets its end (clicking
-     * the start again drops the span); a click below the start swaps the two so
-     * the earlier day stays the start. Otherwise it toggles a single day and
-     * re-clicking the open day closes the editor.
-     */
     function selectDay(day) {
         var key = dateKey(day);
         if (pickingEnd) {
@@ -282,12 +239,6 @@ PillSurface {
                 width: parent.width
                 spacing: 8 * root.s
 
-                /**
-                 * IP geolocation only ever resolves to the ISP city, so the town
-                 * is editable in place: tap to type, which sets Flags.weatherCity
-                 * and re-geocodes through Open-Meteo for the exact spot. Blank it
-                 * to fall back to auto IP detection.
-                 */
                 Item {
                     id: cityBox
                     anchors.verticalCenter: parent.verticalCenter
@@ -728,11 +679,9 @@ PillSurface {
         opacity: root.editorShown ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
-        /** Events covering the picked day (a span's start), empty until a day is picked. */
         readonly property var dayEvents: root.selectedDate.length > 0
             ? Events.forDate(root.selectedDate) : []
 
-        /** Single day reads "Mon 9 Jun"; a span reads its range. */
         readonly property string heading: {
             if (root.selectedDate.length === 0)
                 return "";
@@ -745,21 +694,14 @@ PillSurface {
             ? root.fmtDay(root.selectedDate, false)
             : root.fmtSpan(root.rangeLo, root.rangeHi)
 
-        /** "allday" (default) hides the time fields; "timed" reveals start/end. */
         property string mode: "allday"
         property string startVal: ""
         property string endVal: ""
         property string titleVal: ""
 
-        /**
-         * recur is "" / "month" / "year". It suggests yearly by itself once the
-         * title reads like a birthday and then stays as the user left it after they
-         * work the Repeat toggle by hand (recurManual).
-         */
         property string recur: ""
         property bool recurManual: false
 
-        /** Suggest yearly for a birthday title, unless the user already chose. */
         function autoRecur() {
             if (!recurManual)
                 recur = Events.isBirthday(titleVal) ? "year" : "";
@@ -776,13 +718,11 @@ PillSurface {
             titleField.text = "";
         }
 
-        /** A time is kept only when it reads as HH:MM, otherwise it drops to an all-day blank. */
         function cleanTime(t) {
             var v = t.trim();
             return /^\d{1,2}:\d{2}$/.test(v) ? v : "";
         }
 
-        /** Add the form's event when a title is set, then reset the inputs. */
         function commit() {
             if (titleVal.trim().length === 0)
                 return;
@@ -821,7 +761,6 @@ PillSurface {
                 color: Theme.hair
             }
 
-            /** Capped so a day stacked with events scrolls instead of growing the surface. */
             Item {
                 width: parent.width
                 height: edFlick.height
@@ -861,7 +800,6 @@ PillSurface {
                                 radius: Motion.rSmall * root.s
                                 color: evArea.hovered ? Theme.frameBg : "transparent"
 
-                                /** "all day" or "09:00–10:00", a date span when multi-day, "every year" when recurring. */
                                 readonly property string meta: {
                                     var datePart = "";
                                     if (evRow.modelData.endDate && evRow.modelData.endDate.length > 0)
@@ -1128,12 +1066,6 @@ PillSurface {
                 }
             }
 
-            /**
-             * Span control: the chip shows the day or range, the button arms the
-             * grid so the next day click closes a span (the under-grid hint and
-             * range tint guide it), and ✕ drops a set span back to a single day.
-             * Hidden for a recurring entry, which is a single repeating day.
-             */
             Row {
                 width: parent.width
                 spacing: 8 * root.s

@@ -7,13 +7,7 @@ import "Singletons"
 import "lib/fuzzy.js" as Fuzzy
 import "lib/calc.js" as Calc
 
-/**
- * Launcher surface: search field over a ranked application list, drawn as one
- * of the pill's surfaces. Desktop entries are ranked by fuzzy match and prior
- * launch frequency (usage file shared with the standalone launcher), the
- * chosen entry launches through Hyprland so new windows target the workspace
- * where the surface was opened.
- */
+
 PillSurface {
     id: root
 
@@ -27,13 +21,7 @@ PillSurface {
     property var usage: ({})
     property int workspaceId: 0
 
-    /**
-     * Calc mode: when the whole query parses as a real calculation (an
-     * expression with at least one operation, so lone numbers and app names like
-     * i3 or python3 fall through to app search), a result row appears above the
-     * list and Enter copies the value. The parser in lib/calc.js never evals, so
-     * a query cannot run code.
-     */
+
     readonly property var calc: Calc.evaluate(query)
     readonly property bool calcActive: calc.ok
     property bool calcCopied: false
@@ -46,7 +34,7 @@ PillSurface {
         root.calcCopied = true;
     }
 
-    /** Row index currently in AppImage edit mode (rename plus armed delete), -1 when none. */
+
     property int editIndex: -1
 
     readonly property string appimageScript: Quickshell.env("HOME") + "/.config/hypr/scripts/appimage-install.sh"
@@ -57,12 +45,7 @@ PillSurface {
 
     Process { id: appimageProc }
 
-    /**
-     * Window-coordinate position of the last hover event that was allowed to
-     * move the selection. Rows sliding under a stationary cursor during
-     * keyboard scrolling produce hover events at an unchanged window position,
-     * which must not steal the keyboard selection.
-     */
+
     property point lastPointer: Qt.point(-1, -1)
 
     readonly property point caretPoint: {
@@ -461,12 +444,7 @@ PillSurface {
                     }
                 }
 
-                /**
-                 * Name over description, each clipped on its own line, so a long
-                 * comment can no longer bleed into the name the way one shared row
-                 * let it. The block centres on the icon whether it shows one line or
-                 * two, and an app with no description just reads as a centred name.
-                 */
+
                 Column {
                     anchors.left: iconBg.right
                     anchors.leftMargin: 10 * root.s

@@ -7,13 +7,7 @@ import Quickshell.Io
 import Quickshell.Networking
 import "Singletons"
 
-/**
- * WLAN drill-in for the link surface: back chevron, wifi enable toggle and the
- * live network list sorted by signal strength. Security and known-profile
- * ground truth come from nmcli; clicking a secured unknown network expands an
- * inline password row that connects through `nmcli dev wifi connect`. The pill
- * body provides the surface material, so this item draws no background.
- */
+
 Item {
     id: root
 
@@ -43,18 +37,15 @@ Item {
     property string actionFocus: "row"
     property string focusTarget: "list"
 
-    /**
-     * SSID of the saved network whose stored password is currently shown, plus
-     * the revealed secret itself. Keying both to one SSID keeps the reveal local
-     * to the row the user asked about and lets `revealResolved` distinguish "not
-     * yet read" from "read but empty" so an open profile shows a clear message.
-     */
+
     property string revealedSsid: ""
     property string revealedPw: ""
     property bool revealResolved: false
 
     readonly property string hsCon: "RicelinHotspot"
     readonly property string hsIface: wifiDev ? (wifiDev.name || "wlan0") : "wlan0"
+    property string computerName: ""
+    property bool hsNameFromProfile: false
     property string hsName: "Ricelin"
     property string hsPw: ""
     property bool hsActive: false
@@ -62,11 +53,7 @@ Item {
     property string hsEdit: ""
     property string hsDraft: ""
 
-    /**
-     * Draft of the password being typed for `expandedSsid`. Lives on the root so
-     * the field can restore itself from the draft if the keyed list model swaps
-     * the delegate's network object under it on a rescan.
-     */
+
     property string pwDraft: ""
     property string pendingPw: ""
     property string attemptSsid: ""
@@ -98,10 +85,7 @@ Item {
         profProc.running = true;
     }
 
-    /**
-     * Splits one `nmcli -t` line at its last unescaped colon and unescapes the
-     * leading field. Returns null for lines without a field separator.
-     */
+
     function splitTerse(line) {
         for (var k = line.length - 1; k >= 0; k--) {
             if (line[k] === ":" && (k === 0 || line[k - 1] !== "\\"))
@@ -110,12 +94,7 @@ Item {
         return null;
     }
 
-    /**
-     * Click dispatch for a network row. A connected or saved network expands the
-     * inline confirm row (disconnect/connect plus forget) rather than acting at
-     * once; an open unknown network connects directly; an unknown secured network
-     * expands the password row. Tapping the open row again collapses it.
-     */
+
     function activateNetwork(net) {
         if (!net)
             return;
@@ -142,10 +121,7 @@ Item {
         expandedSsid = ssid;
     }
 
-    /**
-     * Connects a saved profile from its confirm row. Known profiles connect by
-     * name through the device so no password prompt is needed.
-     */
+
     function connectKnown(net) {
         if (!net)
             return;
@@ -164,11 +140,7 @@ Item {
         refresh();
     }
 
-    /**
-     * Drops the saved connection profile for `ssid`. The SSID is passed as its
-     * own argv element so an odd character can neither break nor inject the
-     * command. The list refreshes once nmcli exits.
-     */
+
     function forgetNetwork(ssid) {
         if (forgetProc.running || !ssid.length)
             return;
@@ -177,13 +149,7 @@ Item {
         forgetProc.running = true;
     }
 
-    /**
-     * Reveals the stored password of a saved profile, or hides it again if the
-     * same row is already showing. NetworkManager lets the owning user read their
-     * own saved secret without root, so this runs unprivileged. The SSID is
-     * passed as its own argv element so an odd character can neither break nor
-     * inject the command.
-     */
+
     function revealPassword(ssid) {
         if (!ssid.length)
             return;
@@ -397,11 +363,7 @@ Item {
         return false;
     }
 
-    /**
-     * Connects via `nmcli --ask`, feeding the password through stdin so the
-     * secret never appears in the process command line (`/proc/<pid>/cmdline`
-     * is world-readable for the whole connection attempt).
-     */
+
     function connectWithPassword(ssid, pw) {
         if (connProc.running || !pw.length)
             return;
@@ -414,11 +376,7 @@ Item {
         connProc.running = true;
     }
 
-    /**
-     * Reload pulse: forces a fresh nmcli rescan and spins the control for up to
-     * 10s. The device scanner already runs while the drill-in is open, so the
-     * list never empties; this only refreshes results and drives the spinner.
-     */
+
     function startScan() {
         if (!wifiOn)
             return;
@@ -485,12 +443,7 @@ Item {
         command: ["nmcli", "dev", "wifi", "rescan"]
     }
 
-    /**
-     * Brings the shared AP up with the current name and password, creating the
-     * persistent connection on first use and modifying it on later changes. Name
-     * and password are passed as positional arguments, never spliced into the
-     * shell string, so an odd character cannot break or inject the command.
-     */
+
     function applyHotspot() {
         if (hsBusy || hsPw.length < 8)
             return;
@@ -519,11 +472,7 @@ Item {
         hsReadProc.running = true;
     }
 
-    /**
-     * Commits an inline name or password edit, ignoring a password shorter than
-     * the 8-character WPA2 minimum. A live hotspot is re-applied so the change
-     * takes effect at once.
-     */
+
     function commitHotspotEdit() {
         if (hsEdit === "name") {
             if (hsDraft.length)
@@ -537,10 +486,7 @@ Item {
             applyHotspot();
     }
 
-    /**
-     * Builds an eight-character WPA2 password from an unambiguous alphabet, used
-     * when the hotspot is switched on before a password has been set.
-     */
+
     function generatePw() {
         var cs = "abcdefghijkmnpqrstuvwxyz23456789";
         var s = "";
@@ -574,14 +520,34 @@ Item {
         }
     }
 
+
+    Process {
+        id: hostNameProc
+        command: ["hostname", "-s"]
+        Component.onCompleted: running = true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var name = this.text.trim();
+                if (!name.length)
+                    return;
+                root.computerName = name;
+                if (!root.hsNameFromProfile)
+                    root.hsName = name;
+            }
+        }
+    }
+
     Process {
         id: hsReadProc
         command: ["nmcli", "-t", "-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "connection", "show", root.hsCon]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.split("\n");
-                if (lines.length >= 1 && lines[0].length)
+                root.hsNameFromProfile = lines.length >= 1 && lines[0].length > 0;
+                if (root.hsNameFromProfile)
                     root.hsName = lines[0];
+                else
+                    root.hsName = root.computerName.length ? root.computerName : "Ricelin";
                 if (lines.length >= 2 && lines[1].length)
                     root.hsPw = lines[1];
             }
@@ -650,30 +616,19 @@ Item {
         }
     }
 
-    /**
-     * A failed `nmcli dev wifi connect` still leaves a connection profile
-     * named after the SSID behind; without deleting it the network would be
-     * treated as known on the next click and silently fail forever.
-     */
+
     Process {
         id: cleanupProc
         onExited: root.refresh()
     }
 
-    /**
-     * Drops a saved profile on Forget. The list refreshes on exit so the row
-     * loses its known/connected state and its lock falls back to dim.
-     */
+
     Process {
         id: forgetProc
         onExited: root.refresh()
     }
 
-    /**
-     * Reads one saved profile's PSK on demand. The result is held only as long as
-     * the row stays open; an empty result means the profile is open or stores no
-     * recoverable secret, surfaced by the row as a plain note.
-     */
+
     Process {
         id: revealProc
         stdout: StdioCollector {
@@ -692,12 +647,7 @@ Item {
         onTriggered: if (root.active) secProc.running = true
     }
 
-    /**
-     * Keys the network list by SSID so a rescan diffs into the existing rows
-     * rather than tearing every delegate down and rebuilding it. Delegates keep
-     * their identity across scans, so the inline confirm or password row stays
-     * open under the network the user tapped.
-     */
+
     ScriptModel {
         id: netModel
         objectProp: "name"

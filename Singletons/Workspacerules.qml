@@ -4,17 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 
-/**
- * Persistent workspace→monitor map from Hyprland's workspace rules
- * (`hyprctl workspacerules`). This is the single source for the split that
- * monitors.lua declares, so the pill's dots show every assigned workspace on a
- * monitor even before it has been visited, instead of hardcoding monitor
- * names. Empty when a setup has no rules (the usual single-monitor case) and
- * the dots fall back to live workspaces. Re-read on config reload, since
- * editing monitors.lua rewrites the rules. A live hyprctl snapshot backs the
- * no-rules fallback so startup does not depend on Quickshell's Hyprland cache
- * catching the first workspace event.
- */
+
 Singleton {
     id: root
 

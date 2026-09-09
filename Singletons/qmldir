@@ -3,7 +3,6 @@ singleton Motion Motion.qml
 singleton Flags Flags.qml
 singleton Notifs Notifs.qml
 singleton Sysmon Sysmon.qml
-singleton Dyn Dyn.qml
 singleton Events Events.qml
 singleton Workspacerules Workspacerules.qml
 singleton Players Players.qml

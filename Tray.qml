@@ -8,13 +8,7 @@ import Quickshell.Wayland
 import Quickshell.Services.SystemTray
 import "Singletons"
 
-/**
- * System tray. Draws StatusNotifier items as warm-tinted icons. Left-click
- * activates (preferring the resolved desktop entry), middle-click does the
- * secondary action, right-click opens the item's native menu in a floating
- * washi card, wheel scrolls the item. The menu gets its own overlay window so
- * it can grab keyboard focus for dismissal.
- */
+
 Item {
     id: tray
 
@@ -110,11 +104,7 @@ Item {
         }
     }
 
-    /**
-     * One menu line: separator, or a row with optional checkbox/radio state,
-     * icon, label and a submenu chevron that rotates when expanded. Used for
-     * both top-level entries and indented submenu children.
-     */
+
     component MenuRow: Item {
         id: mrow
 

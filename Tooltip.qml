@@ -2,17 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import "Singletons"
 
-/**
- * Washi hint bubble for pill controls. Anchored to its parent control and
- * centred on it; `placement` decides whether the bubble floats above (pointer
- * down) or below (pointer up) so chips near the pill edge never clip off-screen.
- * The host sets `show` from the control's own HoverHandler; the bubble arms
- * after a hover delay, fades in slowly and out fast.
- *
- * Non-interactive by design: no MouseArea or HoverHandler lives here, so it
- * never steals pointer events from the controls or the mixer's hover tracker.
- * It is `visible: false` whenever fully faded, for the same reason.
- */
+
 Item {
     id: root
 

@@ -1,11 +1,7 @@
 import QtQuick
 import "Singletons"
 
-/**
- * Toggle switch: tile bg off, terracotta fill on, cream knob slides on the
- * fast motion token. Shared by the link surface and its WLAN/Bluetooth
- * drill-ins.
- */
+
 Rectangle {
     id: toggle
 

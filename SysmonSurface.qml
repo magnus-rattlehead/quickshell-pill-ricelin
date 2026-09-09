@@ -3,11 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "Singletons"
 
-/**
- * SYSTEM surface: live machine vitals fed by the Sysmon singleton. GPU dials are
- * generated from Sysmon.gpus, so mixed Intel/NVIDIA systems can show each card
- * separately while still degrading cleanly when a telemetry backend is missing.
- */
+
 PillSurface {
     id: root
 

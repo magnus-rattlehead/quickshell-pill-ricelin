@@ -3,23 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-/**
- * Live weather for the pill's hover glance, served by Open-Meteo with no API key.
- * Location resolves once and is cached so a restart never re-hits the network for
- * coordinates: by default the city, latitude and longitude come from a keyless IP
- * lookup (ip-api), but a non-empty `Flags.weatherCity` override geocodes that name
- * via Open-Meteo's geocoder instead. Once coordinates are known the forecast runs
- * immediately and then every 20 minutes, exposing the current conditions plus a
- * 24-hour hourly strip.
- *
- * Everything is async through `Process` + `curl`, mirroring how Sysmon and Devices
- * fetch, so startup never blocks on a slow or absent connection. Every JSON parse
- * is guarded: a partial body or network blip leaves the last good values in place
- * and `ready` simply stays false until the first clean fetch lands.
- *
- * Conditions render as the pill's built-in vector weather icons, keyed off the
- * WMO weather code via `glyphFor`, with `labelFor` giving the short english word.
- */
+
 Singleton {
     id: root
 
@@ -38,10 +22,7 @@ Singleton {
     property real lon: 0
     property bool located: false
 
-    /**
-     * Maps a WMO weather code to a built-in vector icon name. Clear skies switch
-     * between sun and moon so the glance reads day-versus-night at a glance.
-     */
+
     function glyphFor(code, day) {
         if (code === 0)
             return day ? "sun" : "moon";
@@ -58,7 +39,7 @@ Singleton {
         return "cloud";
     }
 
-    /** Short english word for a WMO weather code, for labels and accessibility. */
+
     function labelFor(code) {
         if (code === 0)
             return "Clear";
@@ -88,7 +69,7 @@ Singleton {
         return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
     }
 
-    /** Persist resolved coordinates so a restart skips the location round-trip. */
+
     function writeLoc() {
         locCache.setText(JSON.stringify({ city: root.city, lat: root.lat, lon: root.lon }));
     }
@@ -106,10 +87,7 @@ Singleton {
             root.locate();
     }
 
-    /**
-     * Loads cached coordinates synchronously (blockLoading) and fetches at once;
-     * an absent or malformed cache falls through to a fresh location lookup.
-     */
+
     Component.onCompleted: {
         try {
             var c = JSON.parse(locCache.text());
@@ -133,7 +111,7 @@ Singleton {
         printErrors: false
     }
 
-    /** Resolve coordinates: geocode the manual city override, else fall back to IP. */
+
     function locate() {
         if (Flags.weatherCity && Flags.weatherCity.trim().length > 0)
             geoProc.running = true;

@@ -414,16 +414,6 @@ ShellRoot {
                         return;
                     }
                 }
-                Keys.onReleased: (e) => {
-                    if (e.isAutoRepeat)
-                        return;
-                    if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space)
-                        && pill.powerOpen) {
-                        pill.powerRelease();
-                        e.accepted = true;
-                    }
-                }
-
                 Pill {
                     id: pill
                     anchors.top: parent.top

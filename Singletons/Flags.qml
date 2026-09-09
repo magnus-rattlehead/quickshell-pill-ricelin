@@ -3,13 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-/**
- * Shared session flags persisted to a small JSON file and watched for external
- * change, so every Ricelin daemon (pill, lock) reads and writes the same
- * Do-Not-Disturb and Keep-Awake state live without a second notification server
- * or idle inhibitor. Toggling in one surface updates the others on the next file
- * event, and the state survives a daemon restart.
- */
+
 Singleton {
     id: root
 
@@ -20,6 +14,7 @@ Singleton {
     property alias time12h: adapter.time12h
     property alias clockSeconds: adapter.clockSeconds
     property alias showGlyphs: adapter.showGlyphs
+    property alias accentColor: adapter.accentColor
     property alias paletteMode: adapter.paletteMode
     property alias wallpaperDir: adapter.wallpaperDir
     property alias uiScale: adapter.uiScale
@@ -79,8 +74,10 @@ Singleton {
             property bool time12h: false
             property bool clockSeconds: false
             property bool showGlyphs: false
+
+            property string accentColor: "#ffffff"
             property string paletteMode: "static"
-            /** Empty means fall back to ~/Ricelin/wallpapers. Lives in user state so an in-app update never clobbers a custom folder. */
+
             property string wallpaperDir: ""
             property real uiScale: 1.0
             property bool reduceMotion: false
@@ -90,9 +87,9 @@ Singleton {
             property string uiFont: ""
             property real pillOpacity: 1.0
             property bool pillBlur: false
-            /** Top margin as a fraction of the shipped 8px. 0 sits the pill flush to the screen edge. */
+
             property real topGap: 1.0
-            /** Pill-to-window band as a fraction of the shipped 12px. 0 tucks the windows flush under the pill. */
+
             property real appGap: 1.0
             property int recordCountdown: 5
             property string recordDir: ""

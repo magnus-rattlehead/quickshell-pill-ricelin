@@ -2,14 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 import "Singletons"
 
-/**
- * Self-contained vector glyph drawn from baked SVG path data, so the pill never
- * depends on the system icon theme or external asset files. Set `name` to pick a
- * glyph, `color` to tint it; stroked glyphs use `stroke` width, filled glyphs
- * (media transport) paint solid. Paths live in a 24x24 space and scale to the
- * item's size. Each glyph's actual bounding box is centred within the item on
- * both axes, so glyphs with differing path extents share one optical baseline.
- */
+
 Item {
     id: root
 
