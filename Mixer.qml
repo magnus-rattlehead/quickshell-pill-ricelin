@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell.Services.Pipewire
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 PillSurface {
     id: root
@@ -54,20 +55,6 @@ PillSurface {
     readonly property int faderCount: faders.length
     readonly property bool surfaceHovered: hoverTracker.hovered
 
-    readonly property point focusTickPoint: {
-        void root.width;
-        void root.height;
-        void root.focusIndex;
-        const i = Math.max(0, Math.min(faders.length - 1, root.focusIndex));
-        const f = faders[i];
-        if (!f)
-            return Qt.point(0, 0);
-        return f.mapToItem(root, f.tickCenter.x, f.tickCenter.y);
-    }
-
-    ameForm: "tick"
-    amePoint: focusTickPoint
-
     readonly property int hoverIndex: surfaceHovered && width > 0 && faders.length > 0
         && hoverTracker.point.position.y >= faderRow.y
         ? Math.max(0, Math.min(faders.length - 1, Math.floor(hoverTracker.point.position.x / (width / faders.length))))
@@ -105,7 +92,7 @@ PillSurface {
         objects: [root.sink, root.source].concat(root.outputSinks).concat(root.inputSources).filter(Boolean)
     }
 
-    component DevicePickerChip: Rectangle {
+    component DevicePickerChip: ButtonSurface {
         id: dchip
         property string glyph: ""
         property bool open: false
@@ -114,11 +101,7 @@ PillSurface {
 
         width: 26 * root.s
         height: 26 * root.s
-        radius: 8 * root.s
-        color: dchip.open ? Qt.alpha(Theme.onGlow, 0.14)
-            : (dchipHover.hovered ? Theme.frameBg : "transparent")
-        border.width: 1
-        border.color: dchip.open ? Qt.alpha(Theme.onGlow, 0.5) : Theme.border
+        radius: 4 * root.s
         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
         GlyphIcon {
@@ -133,7 +116,9 @@ PillSurface {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: dchip.toggled()
+            hoverEnabled: true
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root); dchip.toggled(); }
         }
 
         Tooltip {
@@ -162,6 +147,7 @@ PillSurface {
             clip: true
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 visible: Flags.showGlyphs
                 text: "調"
@@ -171,6 +157,7 @@ PillSurface {
                 font.pixelSize: 16 * root.s
             }
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, Math.max(0, titleRow.width
                     - (Flags.showGlyphs ? 24 * root.s : 0)))
@@ -232,75 +219,120 @@ PillSurface {
         width: 300 * root.s
         height: panel.height
 
-        Rectangle {
-            anchors.fill: panel
-            visible: menu.open
-            radius: panel.radius
-            color: Theme.cardBot
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                shadowEnabled: true
-                shadowColor: Theme.shadow
-                shadowBlur: 0.6
-                shadowVerticalOffset: 4 * root.s
+        // Keep layout local while drawing outside the pill's shader texture.
+        function syncOverlay() {
+            if (!overlay.parent)
+                return;
+            const point = menu.mapToItem(overlay.parent, 0, 0);
+            overlay.x = Math.max(0, Math.min(point.x, overlay.parent.width - overlay.width));
+            overlay.y = Math.max(0, Math.min(point.y, overlay.parent.height - overlay.height));
+            let alpha = 1;
+            for (let item = menu; item && item !== overlay.parent; item = item.parent) {
+                if (!item.visible) {
+                    alpha = 0;
+                    break;
+                }
+                alpha *= item.opacity;
             }
+            overlay.opacity = alpha;
         }
 
-        Rectangle {
-            id: panel
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: Math.min(menu.model.length * 24 * root.s + 4 * root.s, 150 * root.s)
-            clip: true
-            radius: 9 * root.s
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Theme.cardTop }
-                GradientStop { position: 1.0; color: Theme.cardBot }
-            }
-            border.width: 1
-            border.color: Theme.frameBorder
+        onXChanged: syncOverlay()
+        onYChanged: syncOverlay()
+        onVisibleChanged: syncOverlay()
 
-            ListView {
+        Connections {
+            target: menu.Window.window
+            enabled: menu.open
+            function onAfterAnimating() { menu.syncOverlay(); }
+        }
+
+        Item {
+            id: overlay
+            parent: menu.Window.contentItem
+            width: menu.width
+            height: menu.height
+            z: 900
+            visible: menu.open && root.active && opacity > 0.001
+            enabled: visible
+            onParentChanged: menu.syncOverlay()
+
+            // Consume clicks in menu padding as well as on device rows.
+            MouseArea {
                 anchors.fill: parent
-                anchors.margins: 2 * root.s
+                acceptedButtons: Qt.AllButtons
+            }
+
+            Rectangle {
+                anchors.fill: panel
+                visible: menu.open
+                radius: panel.radius
+                color: Theme.cardBot
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: Theme.shadow
+                    shadowBlur: 0.6
+                    shadowVerticalOffset: 4 * root.s
+                }
+            }
+
+            Rectangle {
+                id: panel
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: Math.min(menu.model.length * 24 * root.s + 4 * root.s, 150 * root.s)
                 clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                model: menu.model
+                radius: 4 * root.s
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Theme.cardTop }
+                    GradientStop { position: 1.0; color: Theme.cardBot }
+                }
+                border.width: 1
+                border.color: Theme.frameBorder
 
-                delegate: Rectangle {
-                    id: devRow
-                    required property var modelData
-                    readonly property bool current: menu.current === modelData
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 2 * root.s
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: menu.model
 
-                    width: ListView.view.width
-                    height: 24 * root.s
-                    radius: 7 * root.s
-                    color: devRowHover.hovered ? Theme.frameBg
-                        : (devRow.current ? Qt.alpha(Theme.onGlow, 0.16) : "transparent")
+                    delegate: ButtonSurface {
+                        id: devRow
+                        required property var modelData
+                        readonly property bool current: menu.current === modelData
 
-                    HoverHandler { id: devRowHover }
+                        width: ListView.view.width
+                        height: 24 * root.s
+                        radius: 4 * root.s
+                        HoverHandler { id: devRowHover }
 
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 9 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 9 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.deviceLabel(devRow.modelData)
-                        elide: Text.ElideRight
-                        color: devRow.current ? Theme.cream : Theme.subtle
-                        font.family: Theme.font
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: devRow.current ? Font.Bold : Font.Medium
-                    }
+                        Text {
+                            textFormat: Text.PlainText
+                            anchors.left: parent.left
+                            anchors.leftMargin: 9 * root.s
+                            anchors.right: parent.right
+                            anchors.rightMargin: 9 * root.s
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.deviceLabel(devRow.modelData)
+                            elide: Text.ElideRight
+                            color: devRow.current ? Theme.cream : Theme.subtle
+                            font.family: Theme.font
+                            font.pixelSize: 10.5 * root.s
+                            font.weight: devRow.current ? Font.Bold : Font.Medium
+                        }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            menu.pick(devRow.modelData);
-                            root.openPicker = "";
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            hoverEnabled: true
+                            onEntered: Glitch.hover(root)
+                            onClicked: { Glitch.click(root);
+                                menu.pick(devRow.modelData);
+                                root.openPicker = "";
+                            }
                         }
                     }
                 }
@@ -366,7 +398,9 @@ PillSurface {
                 width: 24 * root.s
                 height: 22 * root.s
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; }
+                hoverEnabled: true
+                onEntered: Glitch.hover(root)
+                onClicked: { Glitch.click(root); if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; }
             }
         }
     }

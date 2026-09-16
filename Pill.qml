@@ -1,11 +1,11 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Networking
 import Quickshell.Hyprland
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 Item {
     id: pill
@@ -142,7 +142,7 @@ Item {
         if (target === "calendar") {
             requestSurface("calendar");
         } else if (target === "wifi") {
-            linkInitialView = "wifi";
+            linkInitialView = "main";
             requestSurface("link");
         } else if (target === "notifications") {
             linkInitialView = "main";
@@ -233,8 +233,8 @@ Item {
     readonly property real powerH: 150 * s
     readonly property real sysmonW: Math.max(392, 260 + 132 * Math.max(1, Sysmon.gpus.length)) * s
     readonly property real toastW: 342 * s
-    readonly property real openCorner: 22 * s
-    readonly property real restCorner: 18 * s
+    readonly property real openCorner: 12 * s
+    readonly property real restCorner: 10 * s
 
     readonly property size targetSize: {
         if (launcherOpen) {
@@ -295,25 +295,32 @@ Item {
     Behavior on width { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
     Behavior on height { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
 
+    // Process the actual UI pixels using the user's Ghostty shader chain.
+    function triggerGlitch(click) { glitchFeedback.trigger(click); }
+
+    GlitchFeedback {
+        id: glitchFeedback
+        effectsEnabled: pill.visible && pill.opacity > 0.01
+    }
+
+    // Match the captured texture to the displayed bounds; padded sourceRect
+    // textures are otherwise squeezed into this item's original geometry.
+    layer.enabled: visible && opacity > 0.01 && GraphicsInfo.api !== GraphicsInfo.Software
+    layer.smooth: true
+    layer.effect: PanelEffect {
+        panelSize: Qt.size(pill.width, pill.height)
+        pixelRatio: pill.Screen.devicePixelRatio
+        time: glitchFeedback.time
+        hoverStrength: glitchFeedback.hoverStrength
+        clickStrength: glitchFeedback.clickStrength
+    }
+
     Rectangle {
-        id: body
         anchors.fill: parent
         radius: pill.morphRadius
-        border.width: 0
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.alpha(Theme.cardTop, pill.materialOpacity) }
-            GradientStop { position: 1.0; color: Qt.alpha(Theme.cardBot, pill.materialOpacity) }
-        }
-        Rectangle {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.topMargin: 1
-            anchors.leftMargin: body.radius * 0.6
-            anchors.rightMargin: body.radius * 0.6
-            height: 1
-            color: Theme.sheen
-        }
+        color: Qt.alpha(Theme.cardTop, pill.materialOpacity)
+        border.width: 1
+        border.color: Theme.border
     }
 
     component PillIcon: Item {
@@ -327,13 +334,10 @@ Item {
         width: 22 * pill.s
         height: 22 * pill.s
 
-        Rectangle {
+        ButtonSurface {
+            outlined: iconRoot.focused
             anchors.fill: parent
-            radius: 7 * pill.s
-            color: iconArea.containsMouse || iconRoot.focused ? Theme.frameBg : "transparent"
-            border.width: iconArea.containsMouse || iconRoot.active || iconRoot.focused ? 1 : 0
-            border.color: iconRoot.focused ? Qt.alpha(Theme.vermLit, 0.85)
-                : (iconRoot.active ? Qt.alpha(Theme.vermLit, 0.55) : Theme.frameBorder)
+            radius: 4 * pill.s
             Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
@@ -353,7 +357,8 @@ Item {
             hoverEnabled: true
             enabled: hover.live
             cursorShape: Qt.PointingHandCursor
-            onClicked: iconRoot.clicked()
+            onEntered: Glitch.hover(pill)
+            onClicked: { Glitch.click(pill); iconRoot.clicked(); }
         }
 
         Tooltip {
@@ -377,6 +382,7 @@ Item {
             spacing: 9 * pill.s
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: clock.hhmm
                 color: Theme.cream
@@ -424,14 +430,12 @@ Item {
                 height: hoverClock.implicitHeight
                 readonly property bool navFocus: pill.navFocused("calendar")
 
-                Rectangle {
+                ButtonSurface {
+                    outlined: parent.navFocus
                     anchors.centerIn: parent
                     width: parent.width + 22 * pill.s
                     height: parent.height + 10 * pill.s
-                    radius: 7 * pill.s
-                    color: parent.navFocus ? Theme.frameBg : "transparent"
-                    border.width: parent.navFocus ? 1 : 0
-                    border.color: Qt.alpha(Theme.vermLit, 0.85)
+                    radius: 4 * pill.s
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
 
@@ -440,6 +444,7 @@ Item {
                     anchors.centerIn: parent
                     spacing: 2 * pill.s
                     Text {
+                        textFormat: Text.PlainText
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: clock.hhmm
                         color: Theme.cream
@@ -449,6 +454,7 @@ Item {
                         font.features: { "tnum": 1 }
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: clock.date
                         color: Theme.dim
@@ -466,7 +472,9 @@ Item {
                     height: hoverClock.implicitHeight + 10 * pill.s
                     enabled: hover.live
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: pill.requestSurface("calendar")
+                    hoverEnabled: true
+                    onEntered: Glitch.hover(pill)
+                    onClicked: { Glitch.click(pill); pill.requestSurface("calendar"); }
                 }
             }
 
@@ -481,12 +489,6 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10 * pill.s
 
-                Tray {
-                    anchors.verticalCenter: parent.verticalCenter
-                    s: pill.s
-                    barWindow: pill.barWindow
-                    enabled: hover.live
-                }
 
                 Item {
                     anchors.verticalCenter: parent.verticalCenter
@@ -495,12 +497,10 @@ Item {
                     height: 22 * pill.s
                     readonly property bool navFocus: pill.navFocused("wifi")
 
-                    Rectangle {
+                    ButtonSurface {
+                        outlined: parent.navFocus
                         anchors.fill: parent
-                        radius: 7 * pill.s
-                        color: wifiArea.containsMouse || parent.navFocus ? Theme.frameBg : "transparent"
-                        border.width: wifiArea.containsMouse || parent.navFocus ? 1 : 0
-                        border.color: parent.navFocus ? Qt.alpha(Theme.vermLit, 0.85) : Theme.frameBorder
+                        radius: 4 * pill.s
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
@@ -519,8 +519,9 @@ Item {
                         hoverEnabled: true
                         enabled: hover.live
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            pill.linkInitialView = "wifi";
+                        onEntered: Glitch.hover(pill)
+                        onClicked: { Glitch.click(pill);
+                            pill.linkInitialView = "main";
                             pill.requestSurface("link");
                         }
                     }
@@ -531,7 +532,7 @@ Item {
                     tip: "Notifications"
                     active: Notifs.unread > 0
                     focused: pill.navFocused("notifications")
-                    onClicked: {
+                    onClicked: { Glitch.click(pill);
                         pill.linkInitialView = "main";
                         pill.requestSurface("link");
                     }
@@ -541,14 +542,14 @@ Item {
                     glyph: "mixer"
                     tip: "Mixer"
                     focused: pill.navFocused("mixer")
-                    onClicked: pill.requestSurface("mixer")
+                    onClicked: { Glitch.click(pill); pill.requestSurface("mixer"); }
                 }
 
                 PillIcon {
                     glyph: "monitor"
                     tip: "System"
                     focused: pill.navFocused("sysmon")
-                    onClicked: pill.requestSurface("sysmon")
+                    onClicked: { Glitch.click(pill); pill.requestSurface("sysmon"); }
                 }
 
                 PillIcon {
@@ -556,14 +557,14 @@ Item {
                     tip: "Media"
                     visible: Players.list.length > 0
                     focused: pill.navFocused("media")
-                    onClicked: pill.requestSurface("media")
+                    onClicked: { Glitch.click(pill); pill.requestSurface("media"); }
                 }
 
                 PillIcon {
                     glyph: "shutdown"
                     tip: "Power"
                     focused: pill.navFocused("power")
-                    onClicked: pill.requestSurface("power")
+                    onClicked: { Glitch.click(pill); pill.requestSurface("power"); }
                 }
             }
         }
@@ -691,4 +692,5 @@ Item {
             }
         }
     }
+
 }

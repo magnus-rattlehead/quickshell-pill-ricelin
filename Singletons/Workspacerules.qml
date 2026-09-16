@@ -8,9 +8,9 @@ import Quickshell.Hyprland
 Singleton {
     id: root
 
-    property var byMonitor: ({})
-    property var liveByMonitor: ({})
-    property var activeByMonitor: ({})
+    property var byMonitor: Object.create(null)
+    property var liveByMonitor: Object.create(null)
+    property var activeByMonitor: Object.create(null)
     property int revision: 0
     property bool rulesPending: false
     property bool livePending: false
@@ -66,7 +66,7 @@ Singleton {
     }
 
     function applyMonitors(text) {
-        var active = {};
+        var active = Object.create(null);
         try {
             var mons = JSON.parse(text);
             for (var i = 0; i < mons.length; i++) {
@@ -88,7 +88,7 @@ Singleton {
     }
 
     function applyWorkspaces(text) {
-        var map = {};
+        var map = Object.create(null);
         try {
             var wss = JSON.parse(text);
             for (var i = 0; i < wss.length; i++) {
@@ -109,7 +109,7 @@ Singleton {
         command: ["hyprctl", "workspacerules", "-j"]
         stdout: StdioCollector {
             onStreamFinished: {
-                var map = {};
+                var map = Object.create(null);
                 try {
                     var rules = JSON.parse(this.text);
                     for (var i = 0; i < rules.length; i++) {

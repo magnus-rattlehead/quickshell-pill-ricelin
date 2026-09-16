@@ -19,6 +19,7 @@ Item {
     readonly property bool overflowing: label.implicitWidth > width
 
     Text {
+        textFormat: Text.PlainText
         id: label
         anchors.verticalCenter: parent.verticalCenter
         x: Math.round(root.scrollX)

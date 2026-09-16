@@ -12,7 +12,7 @@ Singleton {
     property bool pending: false
 
     readonly property string thumbDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/cliphist-thumbs/"
-    readonly property string thumbScript: Quickshell.env("HOME") + "/.config/hypr/scripts/cliphist-thumbs.sh"
+    readonly property string thumbScript: decodeURIComponent(Qt.resolvedUrl("../scripts/cliphist-thumbs.sh").toString().replace(/^file:\/\//, ""))
 
     function refresh() {
         if (thumbProc.running || listProc.running || delProc.running || delQueue.length) {

@@ -17,9 +17,6 @@ Item {
     signal requestClose()
 
 
-    property string ameForm: "off"
-    property point amePoint: Qt.point(width / 2, height / 2)
-
     readonly property bool active: open
 
 

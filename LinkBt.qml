@@ -1,9 +1,9 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Quickshell.Io
 import Quickshell.Bluetooth
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 Item {
@@ -14,38 +14,20 @@ Item {
 
     signal back()
 
-    readonly property var adapter: (typeof Bluetooth !== "undefined" && Bluetooth) ? Bluetooth.defaultAdapter : null
-    readonly property var adapterDevices: (adapter && adapter.devices) ? adapter.devices.values : []
-    readonly property var globalDevices: (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices) ? Bluetooth.devices.values : []
-    property var scanDevices: []
-    readonly property var devices: {
-        var out = [];
-        var seen = ({});
-        for (var i = 0; i < adapterDevices.length; i++)
-            addDevice(out, seen, adapterDevices[i]);
-        for (var j = 0; j < globalDevices.length; j++)
-            addDevice(out, seen, globalDevices[j]);
-        for (var k = 0; k < scanDevices.length; k++)
-            addDevice(out, seen, scanDevices[k]);
-        return out;
-    }
+    BluetoothController { id: controller; active: root.active }
+    readonly property var adapter: controller.adapter
+    readonly property var devices: controller.devices
+    readonly property var devicesSorted: controller.devicesSorted
+    readonly property bool discovering: controller.discovering
+    readonly property string pairingAddress: controller.pairingAddress
+    readonly property string failedAddress: controller.failedAddress
+    function addressOf(d) { return controller.addressOf(d); }
+    function pairDevice(d) { controller.pairDevice(d); }
+    function startScan() { controller.startScan(); }
+    function stopScan() { controller.stopScan(); }
+    function toggleAdapter() { controller.toggleAdapter(); }
 
 
-    readonly property var devicesSorted: devices.slice().sort(function(a, b) {
-        function rank(d) {
-            if (!d) return 3;
-            if (d.connected) return 0;
-            if (d.paired) return 1;
-            return (d.name && d.name.length) ? 2 : 3;
-        }
-        var r = rank(a) - rank(b);
-        if (r !== 0) return r;
-        return String((a && a.name) || "").localeCompare(String((b && b.name) || ""));
-    })
-    readonly property bool discovering: scanProc.running
-
-    property string pairingAddress: ""
-    property string failedAddress: ""
     property int navIndex: 0
     property string actionFocus: "row"
     property string focusTarget: "list"
@@ -66,58 +48,6 @@ Item {
 
     implicitHeight: listFrame.y + listFrame.height
 
-    function addressOf(d) {
-        return (d && d.address) ? String(d.address) : "";
-    }
-
-    function addDevice(out, seen, d) {
-        if (!d)
-            return;
-        var addr = addressOf(d);
-        var key = addr.length ? addr : String((d.deviceName || d.name || "") + "|" + out.length);
-        if (seen[key])
-            return;
-        seen[key] = true;
-        out.push(d);
-    }
-
-    function stripAnsi(text) {
-        return String(text).replace(/\u001b\[[0-9;]*m/g, "").trim();
-    }
-
-    function rememberScannedDevice(addr, name) {
-        if (!addr || !addr.length)
-            return;
-
-        var arr = scanDevices.slice();
-        var cleanName = (name && name.length) ? name : "";
-        if (cleanName.toUpperCase() === addr || cleanName.toUpperCase() === addr.replace(/:/g, "-"))
-            cleanName = "";
-        var label = cleanName.length ? cleanName : addr;
-        for (var i = 0; i < arr.length; i++) {
-            if (arr[i].address === addr) {
-                if (cleanName.length && arr[i].name !== cleanName)
-                    arr[i] = { address: addr, name: cleanName, deviceName: label, connected: false, paired: false, scanned: true };
-                scanDevices = arr;
-                return;
-            }
-        }
-        arr.push({ address: addr, name: cleanName, deviceName: label, connected: false, paired: false, scanned: true });
-        scanDevices = arr;
-    }
-
-    function ingestScanLine(line) {
-        var clean = stripAnsi(line);
-        var m = clean.match(/\[NEW\] Device ([0-9A-Fa-f:]{17})(?: (.*))?$/);
-        if (m) {
-            rememberScannedDevice(m[1].toUpperCase(), (m[2] || "").trim());
-            return;
-        }
-
-        m = clean.match(/\[CHG\] Device ([0-9A-Fa-f:]{17}) (Name|Alias): (.*)$/);
-        if (m)
-            rememberScannedDevice(m[1].toUpperCase(), (m[3] || "").trim());
-    }
 
     function metaFor(d) {
         if (!d) return "";
@@ -152,24 +82,12 @@ Item {
         pairDevice(d);
     }
 
-    function connectDevice(d) {
-        expandedAddress = "";
-        if (d && typeof d.connect === "function")
-            d.connect();
-    }
+    function connectDevice(d) { expandedAddress = ""; controller.connectDevice(d); }
 
-    function disconnectDevice(d) {
-        expandedAddress = "";
-        if (d && typeof d.disconnect === "function")
-            d.disconnect();
-    }
+    function disconnectDevice(d) { expandedAddress = ""; controller.disconnectDevice(d); }
 
 
-    function forgetDevice(d) {
-        expandedAddress = "";
-        if (d && typeof d.forget === "function")
-            d.forget();
-    }
+    function forgetDevice(d) { expandedAddress = ""; controller.forgetDevice(d); }
 
     function currentDevice() {
         return navIndex >= 0 && navIndex < devicesSorted.length ? devicesSorted[navIndex] : null;
@@ -205,7 +123,7 @@ Item {
     }
 
     function normalizeFocusTarget() {
-        if (focusTargets.length === 0) {
+        if (!focusTargets || focusTargets.length === 0) {
             focusTarget = "";
             return;
         }
@@ -264,7 +182,7 @@ Item {
     }
 
     function moveTab(dir) {
-        if (focusTargets.length === 0)
+        if (!focusTargets || focusTargets.length === 0)
             return false;
         normalizeFocusTarget();
         var idx = focusTargets.indexOf(focusTarget);
@@ -278,10 +196,6 @@ Item {
         return true;
     }
 
-    function toggleAdapter() {
-        if (adapter)
-            adapter.enabled = !adapter.enabled;
-    }
 
     function activateFocused() {
         if (focusTarget === "back") {
@@ -338,32 +252,6 @@ Item {
         return false;
     }
 
-    function pairDevice(d) {
-        if (!d || !d.address || pairProc.running)
-            return;
-        pairingAddress = d.address;
-        failedAddress = "";
-        pairProc.command = ["sh", "-c",
-            'timeout 30 bluetoothctl pair "$1" && bluetoothctl trust "$1" && timeout 30 bluetoothctl connect "$1"',
-            "sh", d.address];
-        pairProc.running = true;
-    }
-
-    function startScan() {
-        if (!adapter || adapter.enabled !== true)
-            return;
-
-        scanDevices = [];
-        scanProc.command = ["bluetoothctl", "--timeout", "25", "scan", "on"];
-        scanProc.running = true;
-        scanTimer.restart();
-    }
-
-    function stopScan() {
-        scanTimer.stop();
-        if (scanProc.running)
-            scanProc.running = false;
-    }
 
     onActiveChanged: {
         if (active) {
@@ -390,49 +278,6 @@ Item {
         }
     }
 
-    Timer {
-        id: scanTimer
-        interval: 25000
-        repeat: false
-        onTriggered: root.stopScan()
-    }
-
-    Timer {
-        id: failTimer
-        interval: 4000
-        repeat: false
-        onTriggered: root.failedAddress = ""
-    }
-
-    Process {
-        id: pairProc
-        stdout: StdioCollector {}
-        stderr: StdioCollector {}
-        onExited: function(exitCode) {
-            var addr = root.pairingAddress;
-            root.pairingAddress = "";
-            if (exitCode !== 0) {
-                root.failedAddress = addr;
-                failTimer.restart();
-            }
-        }
-    }
-
-    Process {
-        id: scanProc
-        stdout: SplitParser {
-            splitMarker: "\n"
-            onRead: function(data) { root.ingestScanLine(data); }
-        }
-        stderr: SplitParser {
-            splitMarker: "\n"
-            onRead: function(data) { root.ingestScanLine(data); }
-        }
-        onExited: {
-            scanTimer.stop();
-        }
-    }
-
     Item {
         id: header
         anchors.top: parent.top
@@ -450,13 +295,11 @@ Item {
                 width: 17 * root.s
                 height: 17 * root.s
 
-                Rectangle {
+                ButtonSurface {
+                    outlined: root.headerFocused("back")
                     anchors.fill: parent
                     anchors.margins: -4 * root.s
-                    radius: 6 * root.s
-                    color: backArea.containsMouse || root.headerFocused("back") ? Theme.frameBg : "transparent"
-                    border.width: root.headerFocused("back") ? 1 : 0
-                    border.color: Qt.alpha(Theme.vermLit, 0.85)
+                    radius: 3 * root.s
                 }
 
                 GlyphIcon {
@@ -472,11 +315,13 @@ Item {
                     anchors.margins: -6 * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.back()
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.back(); }
                 }
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "BLUETOOTH"
                 color: Theme.subtle
@@ -493,17 +338,15 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 10 * root.s
 
-            Rectangle {
+            ButtonSurface {
+                outlined: root.headerFocused("scan")
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.adapter ? root.adapter.enabled === true : false
                 width: scanLabel.implicitWidth + 12 * root.s
                 height: 20 * root.s
-                radius: 6 * root.s
-                color: scanArea.containsMouse || root.headerFocused("scan") ? Theme.frameBg : "transparent"
-                border.width: root.headerFocused("scan") ? 1 : 0
-                border.color: Qt.alpha(Theme.vermLit, 0.85)
-
+                radius: 3 * root.s
                 Text {
+                    textFormat: Text.PlainText
                     id: scanLabel
                     anchors.centerIn: parent
                     text: root.discovering ? "Scanning…" : "Scan"
@@ -518,7 +361,8 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root);
                         if (root.discovering)
                             root.stopScan();
                         else
@@ -557,6 +401,7 @@ Item {
         readonly property bool scrollable: root.devices.length > 0 && devCol.implicitHeight > height + 1
 
         Text {
+            textFormat: Text.PlainText
             visible: root.devices.length === 0
             anchors.centerIn: parent
             text: root.discovering ? "Scanning…" : "No devices found"
@@ -602,20 +447,19 @@ Item {
                         width: devCol.width
                         spacing: 2 * root.s
 
-                        Rectangle {
+                        ButtonSurface {
+                            outlined: devItem.rowKeyFocus
                             width: parent.width
                             height: 38 * root.s
-                            radius: 9 * root.s
-                            color: rowHover.hovered || devItem.rowKeyFocus ? Theme.frameBg : "transparent"
-                            border.width: devItem.rowKeyFocus ? 1 : 0
-                            border.color: Qt.alpha(Theme.vermLit, 0.78)
-
+                            radius: 4 * root.s
                             HoverHandler { id: rowHover }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.activateDevice(devItem.modelData)
+                                hoverEnabled: true
+                                onEntered: Glitch.hover(root)
+                                onClicked: { Glitch.click(root); root.activateDevice(devItem.modelData); }
                             }
 
                             Rectangle {
@@ -625,7 +469,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 26 * root.s
                                 height: 26 * root.s
-                                radius: 8 * root.s
+                                radius: 4 * root.s
                                 color: Theme.tileBg
                                 border.width: 1
                                 border.color: Theme.border
@@ -649,6 +493,7 @@ Item {
                                 spacing: 1 * root.s
 
                                 Text {
+                                    textFormat: Text.PlainText
                                     width: parent.width
                                     text: devItem.modelData ? (devItem.modelData.deviceName || devItem.modelData.name || "Unknown") : "Unknown"
                                     color: devItem.isConnected ? Theme.cream : Theme.subtle
@@ -659,6 +504,7 @@ Item {
                                 }
 
                                 Text {
+                                    textFormat: Text.PlainText
                                     width: parent.width
                                     visible: text.length > 0
                                     text: root.metaFor(devItem.modelData)
@@ -701,19 +547,17 @@ Item {
                                     level: Math.max(0, devItem.battery) / 100
                                 }
 
-                                Rectangle {
+                                ButtonSurface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: !devItem.isPaired && !devItem.pairing
-                                    radius: 999
-                                    color: pairArea.containsMouse ? Theme.frameBg : Theme.tileBg
-                                    border.width: 1
-                                    border.color: pairArea.containsMouse ? Theme.vermDim : Theme.border
+                                    radius: 3 * root.s
                                     height: 18 * root.s
                                     width: pairText.implicitWidth + 16 * root.s
                                     Behavior on color { ColorAnimation { duration: Motion.fast } }
                                     Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: pairText
                                         anchors.centerIn: parent
                                         text: "Pair"
@@ -728,7 +572,8 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.activateDevice(devItem.modelData)
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); root.activateDevice(devItem.modelData); }
                                     }
                                 }
                             }
@@ -740,6 +585,7 @@ Item {
                             height: 30 * root.s
 
                             Text {
+                                textFormat: Text.PlainText
                                 anchors.left: parent.left
                                 anchors.leftMargin: 10 * root.s
                                 anchors.right: confirmBtns.left
@@ -760,17 +606,14 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6 * root.s
 
-                                Rectangle {
+                                ButtonSurface {
+                                    outlined: devItem.primaryKeyFocus
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: primaryLabel.implicitWidth + 20 * root.s
                                     height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: primaryArea.containsMouse || devItem.primaryKeyFocus ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: devItem.primaryKeyFocus ? Qt.alpha(Theme.vermLit, 0.85)
-                                        : (primaryArea.containsMouse ? Theme.vermDim : Theme.border)
-
+                                    radius: 4 * root.s
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: primaryLabel
                                         anchors.centerIn: parent
                                         text: devItem.isConnected ? "Disconnect" : "Connect"
@@ -786,26 +629,21 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: devItem.isConnected
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); devItem.isConnected
                                             ? root.disconnectDevice(devItem.modelData)
-                                            : root.connectDevice(devItem.modelData)
+                                            : root.connectDevice(devItem.modelData); }
                                     }
                                 }
 
-                                Rectangle {
+                                ButtonSurface {
+                                    outlined: devItem.forgetKeyFocus
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: forgetLabel.implicitWidth + 20 * root.s
                                     height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: forgetArea.containsMouse || devItem.forgetKeyFocus
-                                        ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
-                                        : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
-                                    border.width: 1
-                                    border.color: devItem.forgetKeyFocus
-                                        ? Qt.alpha(Theme.vermLit, 0.85)
-                                        : Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
-
+                                    radius: 4 * root.s
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: forgetLabel
                                         anchors.centerIn: parent
                                         text: "Forget"
@@ -821,13 +659,15 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.forgetDevice(devItem.modelData)
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); root.forgetDevice(devItem.modelData); }
                                     }
                                 }
                             }
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             visible: devItem.failed
                             text: "Pairing failed"
                             color: Theme.vermLit

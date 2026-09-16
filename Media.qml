@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell.Widgets
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 PillSurface {
@@ -50,20 +51,6 @@ PillSurface {
     readonly property color washMid: mix(Theme.cardTop, Theme.cardBot, 0.5)
     property real sealPulse: 0
 
-    readonly property point seamHead: {
-        void root.width;
-        void root.height;
-        void root.frac;
-        void stroke.x;
-        void stroke.width;
-        return stroke.mapToItem(root, stroke.headX, stroke.headY);
-    }
-    readonly property real seamHeadX: seamHead.x
-    readonly property real seamHeadY: seamHead.y
-
-    ameForm: "seam"
-    amePoint: Qt.point(seamHeadX, seamHeadY)
-
     function fmt(sec) {
         if (!(sec > 0))
             return "0:00";
@@ -107,6 +94,7 @@ PillSurface {
         Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
         Text {
+            textFormat: Text.PlainText
             id: kanjiLabel
             visible: Flags.showGlyphs
             anchors.centerIn: parent
@@ -134,7 +122,8 @@ PillSurface {
             hoverEnabled: true
             enabled: skip.can
             cursorShape: Qt.PointingHandCursor
-            onClicked: skip.activated()
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root); skip.activated(); }
         }
     }
 
@@ -156,7 +145,7 @@ PillSurface {
 
     ClippingRectangle {
         anchors.fill: parent
-        radius: 22 * root.s
+        radius: 11 * root.s
         color: "transparent"
 
         Image {
@@ -295,6 +284,7 @@ PillSurface {
             Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
             Text {
+                textFormat: Text.PlainText
                 id: plainSource
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -336,6 +326,7 @@ PillSurface {
                         url: Players.artUrlFor(root.player)
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.serviceLabel
                         color: Theme.cream
@@ -344,6 +335,7 @@ PillSurface {
                         font.weight: Font.DemiBold
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         text: "▾"
                         color: Theme.vermLit
@@ -356,11 +348,13 @@ PillSurface {
                     anchors.margins: -5 * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.picking = true
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.picking = true; }
                 }
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.left: root.canPick ? srcBubble.right : plainSource.right
                 anchors.leftMargin: 3 * root.s
                 anchors.right: parent.right
@@ -402,18 +396,14 @@ PillSurface {
 
                 Repeater {
                     model: root.picking ? Players.pickable : []
-                    delegate: Rectangle {
+                    delegate: ButtonSurface {
                         id: bub
                         required property var modelData
                         readonly property bool isActive: modelData === Players.active
                         anchors.verticalCenter: parent.verticalCenter
                         height: 32 * root.s
                         width: bubInner.width + 18 * root.s
-                        radius: 11 * root.s
-                        color: isActive ? Qt.alpha(Theme.verm, 0.2) : Qt.alpha(Theme.cream, 0.045)
-                        border.width: 1
-                        border.color: isActive ? Theme.vermLit : Qt.alpha(Theme.cream, 0.12)
-
+                        radius: 6 * root.s
                         Row {
                             id: bubInner
                             anchors.centerIn: parent
@@ -428,6 +418,7 @@ PillSurface {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 0
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: Players.labelOf(bub.modelData)
                                     color: bub.isActive ? Theme.bright : Theme.dim
                                     font.family: Theme.font
@@ -435,6 +426,7 @@ PillSurface {
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
+                                    textFormat: Text.PlainText
                                     text: Players.nowPlayingFor(bub.modelData)
                                     color: bub.isActive ? Theme.subtle : Theme.faint
                                     font.family: Theme.font
@@ -449,7 +441,8 @@ PillSurface {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
+                            onEntered: Glitch.hover(root)
+                            onClicked: { Glitch.click(root);
                                 Players.select(bub.modelData);
                                 root.picking = false;
                             }
@@ -478,29 +471,21 @@ PillSurface {
             onActivated: if (root.player) root.player.previous()
         }
 
-        Rectangle {
+        ButtonSurface {
             id: seal
             anchors.verticalCenter: parent.verticalCenter
             width: 30 * root.s
             height: 30 * root.s
-            radius: 7 * root.s
-            rotation: -1.5
-            scale: 1 + 0.08 * root.sealPulse
-
+            radius: 4 * root.s
             property real sat: root.playing ? 1 : 0
             Behavior on sat { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             opacity: (sealArea.enabled ? 1 : 0.4) * (0.75 + 0.25 * sat)
             Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
-            border.width: 1
-            border.color: Qt.alpha(Theme.vermLit, 0.4 + 0.4 * root.sealPulse)
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: root.mix(Theme.verm, Theme.tileBg, 0.55 - 0.27 * seal.sat) }
-                GradientStop { position: 1.0; color: root.mix(Theme.vermDeep, Theme.tileBg, 0.55 - 0.27 * seal.sat) }
-            }
 
             Text {
+                textFormat: Text.PlainText
                 visible: Flags.showGlyphs
                 anchors.centerIn: parent
                 text: root.playing ? "奏" : "休"
@@ -526,7 +511,8 @@ PillSurface {
                 hoverEnabled: true
                 enabled: root.hasPlayer && root.player.canTogglePlaying
                 cursorShape: Qt.PointingHandCursor
-                onClicked: if (root.player) root.player.togglePlaying()
+                onEntered: Glitch.hover(root)
+                onClicked: { Glitch.click(root); if (root.player) root.player.togglePlaying(); }
             }
         }
 
@@ -558,7 +544,7 @@ PillSurface {
 
         Behavior on drawF {
             enabled: Math.abs(root.frac - stroke.lastFrac) < 0.02
-            NumberAnimation { duration: Math.round(500 * Motion.mult); easing.type: Easing.Linear }
+            NumberAnimation { duration: 500; easing.type: Easing.Linear }
         }
         onTargetFChanged: Qt.callLater(() => { stroke.lastFrac = root.frac; })
 
@@ -613,6 +599,8 @@ PillSurface {
             anchors.margins: -8 * root.s
             enabled: root.hasPlayer && root.player.canSeek && root.player.positionSupported && root.lengthSec > 0 && !root.live
             cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onEntered: Glitch.hover(root)
             function fracAt(mx) {
                 return Math.max(0, Math.min(1, (mx - 8 * root.s - stroke.inset) / stroke.usable));
             }

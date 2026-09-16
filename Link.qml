@@ -7,6 +7,7 @@ import Quickshell.Networking
 import Quickshell.Bluetooth
 import Quickshell.Services.Notifications
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 PillSurface {
@@ -29,29 +30,6 @@ PillSurface {
         ? -1
         : Math.max(0, Math.min(navIndex, mainTargets.length - 1))
 
-
-    property Item focusRowItem: null
-
-
-    function reportRowHover(item, hovered) {
-        if (hovered)
-            focusRowItem = item;
-    }
-
-    readonly property bool rowFocused: focusRowItem !== null && subview === "main" && active
-
-    readonly property point rowPoint: {
-        void root.width;
-        void root.height;
-        void mainCol.implicitHeight;
-        void root.focusRowItem;
-        if (!focusRowItem)
-            return Qt.point(4 * s, root.height / 2);
-        return focusRowItem.mapToItem(root, 4 * s, focusRowItem.height / 2);
-    }
-
-    ameForm: rowFocused ? "rowseam" : "off"
-    amePoint: rowPoint
 
     implicitHeight: subview === "wifi" ? wifiPage.implicitHeight
         : subview === "bt" ? btPage.implicitHeight
@@ -96,7 +74,7 @@ PillSurface {
     function back() {
         if (subview !== "main") {
             subview = "main";
-            syncMainFocus();
+            normalizeNav();
             return true;
         }
         return false;
@@ -105,7 +83,6 @@ PillSurface {
     function normalizeNav() {
         if (mainTargets.length === 0) {
             navIndex = -1;
-            focusRowItem = null;
             return;
         }
         if (navIndex < 0)
@@ -118,21 +95,13 @@ PillSurface {
         return subview === "main" && active && mainTargets.length > 0 && mainTargets[navCursor] === key;
     }
 
-    function syncMainFocus() {
-        if (subview !== "main" || !active) {
-            focusRowItem = null;
-            return;
-        }
-        normalizeNav();
-        focusRowItem = mainFocused("wifi") ? netzRow : btRow;
-    }
 
     function moveMain(dir) {
         if (subview !== "main" || mainTargets.length === 0)
             return false;
         normalizeNav();
         navIndex = (navIndex + dir + mainTargets.length) % mainTargets.length;
-        syncMainFocus();
+        normalizeNav();
         return true;
     }
 
@@ -179,12 +148,10 @@ PillSurface {
     onActiveChanged: {
         if (active) {
             subview = (initialView === "wifi" && wifiDev) ? "wifi" : "main";
-            syncMainFocus();
-        } else {
-            focusRowItem = null;
+            normalizeNav();
         }
     }
-    onSubviewChanged: syncMainFocus()
+    onSubviewChanged: normalizeNav()
 
     Process {
         id: ipProc
@@ -227,7 +194,7 @@ PillSurface {
         }
     }
 
-    component IconToggleChip: Rectangle {
+    component IconToggleChip: ButtonSurface {
         id: chip
         property string glyph: ""
         property bool on: false
@@ -237,11 +204,7 @@ PillSurface {
 
         width: 26 * root.s
         height: 26 * root.s
-        radius: 8 * root.s
-        color: chip.on ? Theme.frameBg : "transparent"
-        border.width: 1
-        border.color: chip.on ? Theme.frameBorder : Theme.border
-
+        radius: 4 * root.s
         GlyphIcon {
             anchors.centerIn: parent
             width: 15 * root.s
@@ -254,9 +217,12 @@ PillSurface {
         HoverHandler { id: chipHover }
 
         MouseArea {
+            id: chipArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: chip.toggled()
+            hoverEnabled: true
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root); chip.toggled(); }
         }
 
         Tooltip {
@@ -269,7 +235,7 @@ PillSurface {
     }
 
 
-    component NotifRow: Rectangle {
+    component NotifRow: ButtonSurface {
         id: nrow
 
         required property var entry
@@ -278,18 +244,18 @@ PillSurface {
 
         width: parent ? parent.width : 0
         height: 26 * root.s
-        radius: 7 * root.s
-        color: nrowHover.hovered ? Theme.frameBg : "transparent"
-
+        radius: 4 * root.s
         HoverHandler {
             id: nrowHover
-            onHoveredChanged: root.reportRowHover(nrow, hovered)
+
         }
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
+            hoverEnabled: true
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root);
                 Notifs.markEntrySeen(nrow.entry);
                 Notifs.activateEntry(nrow.entry);
                 root.requestClose();
@@ -303,7 +269,7 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             width: 2 * root.s
             height: parent.height - 10 * root.s
-            radius: 999
+            radius: 3 * root.s
             color: Theme.verm
         }
 
@@ -314,7 +280,7 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             width: 16 * root.s
             height: 16 * root.s
-            radius: 5 * root.s
+            radius: 2 * root.s
             color: Theme.tileBg
             border.width: 1
             border.color: Theme.border
@@ -336,7 +302,7 @@ PillSurface {
                 visible: !nrowImg.visible
                 width: 5 * root.s
                 height: 5 * root.s
-                radius: 1.5 * root.s
+                radius: 1 * root.s
                 rotation: 45
                 color: nrow.critical ? Theme.vermLit : Theme.verm
             }
@@ -366,6 +332,7 @@ PillSurface {
             spacing: 6 * root.s
 
             Text {
+                textFormat: Text.PlainText
                 visible: nrow.entry.count > 1
                 anchors.verticalCenter: parent.verticalCenter
                 text: "×" + nrow.entry.count
@@ -381,6 +348,7 @@ PillSurface {
                 height: Math.max(nrowAge.implicitHeight, nrowX.implicitHeight)
 
                 Text {
+                    textFormat: Text.PlainText
                     id: nrowAge
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -411,7 +379,8 @@ PillSurface {
                         enabled: nrowHover.hovered
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Notifs.dismissEntry(nrow.entry)
+                        onEntered: Glitch.hover(root)
+                        onClicked: { Glitch.click(root); Notifs.dismissEntry(nrow.entry); }
                     }
                 }
             }
@@ -447,6 +416,7 @@ PillSurface {
                     spacing: 8 * root.s
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         visible: Flags.showGlyphs
                         text: "繋"
@@ -456,6 +426,7 @@ PillSurface {
                         font.pixelSize: 16 * root.s
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         text: "LINK"
                         color: Theme.subtle
@@ -488,6 +459,7 @@ PillSurface {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         visible: Notifs.unread > 0
                         text: Notifs.unread + " NEW"
@@ -515,28 +487,27 @@ PillSurface {
                 color: Theme.hair
             }
 
-            Rectangle {
+            ButtonSurface {
+                outlined: root.mainFocused("wifi")
                 id: netzRow
                 width: parent.width
                 height: 44 * root.s
-                radius: 10 * root.s
-                color: netzHover.hovered || root.mainFocused("wifi") ? Theme.frameBg : "transparent"
-                border.width: root.mainFocused("wifi") ? 1 : 0
-                border.color: Qt.alpha(Theme.vermLit, 0.78)
-
+                radius: 5 * root.s
                 HoverHandler {
                     id: netzHover
                     onHoveredChanged: {
                         if (hovered)
                             root.navIndex = 0;
-                        root.reportRowHover(netzRow, hovered);
+
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.subview = "wifi"
+                    hoverEnabled: true
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.subview = "wifi"; }
                 }
 
                 GlyphIcon {
@@ -560,6 +531,7 @@ PillSurface {
                     spacing: 2 * root.s
 
                     Text {
+                        textFormat: Text.PlainText
                         width: parent.width
                         text: "Network"
                         color: Theme.cream
@@ -569,6 +541,7 @@ PillSurface {
                         elide: Text.ElideRight
                     }
                     Text {
+                        textFormat: Text.PlainText
                         width: parent.width
                         text: root.netzSubText
                         color: !root.wired && root.wifiActive ? Theme.vermLit : Theme.dim
@@ -616,28 +589,27 @@ PillSurface {
                 }
             }
 
-            Rectangle {
+            ButtonSurface {
+                outlined: root.mainFocused("bt")
                 id: btRow
                 width: parent.width
                 height: 44 * root.s
-                radius: 10 * root.s
-                color: btHover.hovered || root.mainFocused("bt") ? Theme.frameBg : "transparent"
-                border.width: root.mainFocused("bt") ? 1 : 0
-                border.color: Qt.alpha(Theme.vermLit, 0.78)
-
+                radius: 5 * root.s
                 HoverHandler {
                     id: btHover
                     onHoveredChanged: {
                         if (hovered)
                             root.navIndex = 1;
-                        root.reportRowHover(btRow, hovered);
+
                     }
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.subview = "bt"
+                    hoverEnabled: true
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.subview = "bt"; }
                 }
 
                 GlyphIcon {
@@ -661,6 +633,7 @@ PillSurface {
                     spacing: 2 * root.s
 
                     Text {
+                        textFormat: Text.PlainText
                         width: parent.width
                         text: "Bluetooth"
                         color: Theme.cream
@@ -670,6 +643,7 @@ PillSurface {
                         elide: Text.ElideRight
                     }
                     Text {
+                        textFormat: Text.PlainText
                         width: parent.width
                         text: root.btSubText
                         color: root.btPrimary ? Theme.vermLit : Theme.dim
@@ -729,6 +703,7 @@ PillSurface {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         id: inboxKanji
                         anchors.verticalCenter: parent.verticalCenter
                         visible: Flags.showGlyphs
@@ -739,6 +714,7 @@ PillSurface {
                         font.pixelSize: 11.5 * root.s
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         text: Flags.showGlyphs ? "INBOX" : "Notifications"
                         color: Theme.faint
@@ -757,6 +733,7 @@ PillSurface {
                     spacing: 4 * root.s
 
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         visible: Flags.showGlyphs
                         text: "払"
@@ -775,6 +752,7 @@ PillSurface {
                         stroke: 1.8
                     }
                     Text {
+                        textFormat: Text.PlainText
                         anchors.verticalCenter: parent.verticalCenter
                         text: "CLEAR"
                         color: clearArea.containsMouse ? Theme.vermLit : Theme.vermDim
@@ -792,7 +770,8 @@ PillSurface {
                     visible: Notifs.count > 0
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Notifs.clearAll()
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); Notifs.clearAll(); }
                 }
             }
 
@@ -835,22 +814,22 @@ PillSurface {
                                     }
                                 }
 
-                                Rectangle {
+                                ButtonSurface {
                                     id: groupHead
                                     width: parent.width
                                     height: 32 * root.s
-                                    radius: 8 * root.s
-                                    color: headHover.hovered ? Theme.frameBg : "transparent"
-
+                                    radius: 4 * root.s
                                     HoverHandler {
                                         id: headHover
-                                        onHoveredChanged: root.reportRowHover(groupHead, hovered)
+
                                     }
 
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
+                                        hoverEnabled: true
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root);
                                             Notifs.markAppSeen(group.modelData.app);
                                             Notifs.toggleExpanded(group.modelData.app);
                                         }
@@ -863,7 +842,7 @@ PillSurface {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 20 * root.s
                                         height: 20 * root.s
-                                        radius: 6 * root.s
+                                        radius: 3 * root.s
                                         color: Theme.tileBg
                                         border.width: 1
                                         border.color: Theme.border
@@ -885,13 +864,14 @@ PillSurface {
                                             visible: !headImg.visible
                                             width: 6 * root.s
                                             height: 6 * root.s
-                                            radius: 2 * root.s
+                                            radius: 1 * root.s
                                             rotation: 45
                                             color: Theme.verm
                                         }
                                     }
 
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: headName
                                         anchors.left: headTile.right
                                         anchors.leftMargin: 8 * root.s
@@ -908,6 +888,7 @@ PillSurface {
                                     }
 
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: headCount
                                         anchors.left: headName.right
                                         anchors.leftMargin: 5 * root.s
@@ -967,7 +948,8 @@ PillSurface {
                                             enabled: headHover.hovered
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: Notifs.dismissApp(group.modelData.app)
+                                            onEntered: Glitch.hover(root)
+                                            onClicked: { Glitch.click(root); Notifs.dismissApp(group.modelData.app); }
                                         }
                                     }
                                 }
@@ -1006,6 +988,7 @@ PillSurface {
                 spacing: 4 * root.s
 
                 Text {
+                    textFormat: Text.PlainText
                     anchors.horizontalCenter: parent.horizontalCenter
                     visible: Flags.showGlyphs
                     text: "静"
@@ -1016,6 +999,7 @@ PillSurface {
                     font.pixelSize: 32 * root.s
                 }
                 Text {
+                    textFormat: Text.PlainText
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Flags.showGlyphs ? "SILENCE" : "No notifications to display"
                     color: Theme.faint

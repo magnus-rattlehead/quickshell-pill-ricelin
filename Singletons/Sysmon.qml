@@ -1,8 +1,10 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
-
+import ".."
+import "../lib/gpu.js" as Gpu
 
 Singleton {
     id: root
@@ -13,6 +15,8 @@ Singleton {
     property int cpuTemp: -1
 
     property var gpus: []
+    // Stable descriptors: measurements update gpus, never this collector model.
+    property var gpuDevices: []
     property bool hasGpu: false
     property string gpuVendor: "none"
     property string amdDev: ""
@@ -41,7 +45,6 @@ Singleton {
     property real prevRx: 0
     property real prevTx: 0
     property real prevNetTime: 0
-    property var prevXeCounters: ({})
 
     function primeAll() {
         if (!detected) {
@@ -51,10 +54,7 @@ Singleton {
         prevCpuTotal = 0;
         prevRx = 0;
         prevNetTime = 0;
-        prevXeCounters = ({});
         fastProc.running = true;
-        if (hasGpu)
-            gpuProc.running = true;
         slowProc.running = true;
     }
 
@@ -146,8 +146,7 @@ Singleton {
             "knownVramTotalGb": knownVram,
             "status": vendor === "nvidia" ? "offline" : "sensor",
             "powerW": -1,
-            "energyUj": -1,
-            "energyTime": 0
+            "energyUj": -1
         };
     }
 
@@ -158,59 +157,6 @@ Singleton {
         for (var p in patch)
             out[p] = patch[p];
         return out;
-    }
-
-    function gpuIdForPci(pci, vendor) {
-        for (var i = 0; i < gpus.length; i++) {
-            var g = gpus[i];
-            if (g.vendor === vendor && g.pci === pci)
-                return g.id;
-        }
-        return vendor + "0";
-    }
-
-    function gpuKnownVramTotal(id) {
-        for (var i = 0; i < gpus.length; i++) {
-            var g = gpus[i];
-            if (g.id === id)
-                return g.knownVramTotalGb > 0 ? g.knownVramTotalGb : g.vramTotalGb;
-        }
-        return 0;
-    }
-
-    function xeLoad(id, samples) {
-        var oldByEngine = prevXeCounters[id] || {};
-        var nextByEngine = {};
-        var busy = 0;
-        var anyDelta = false;
-
-        for (var i = 0; i < samples.length; i++) {
-            var s = samples[i];
-            nextByEngine[s.engine] = {
-                "cycles": s.cycles,
-                "total": s.total,
-                "capacity": s.capacity
-            };
-
-            var old = oldByEngine[s.engine];
-            if (!old)
-                continue;
-
-            var dc = s.cycles - old.cycles;
-            var dt = s.total - old.total;
-            if (dc < 0 || dt <= 0)
-                continue;
-
-            var cap = s.capacity > 0 ? s.capacity : 1;
-            busy += Math.max(0, Math.min(100, 100 * dc / (dt * cap)));
-            anyDelta = true;
-        }
-
-        var nextAll = cloneWith(prevXeCounters, {});
-        nextAll[id] = nextByEngine;
-        prevXeCounters = nextAll;
-
-        return anyDelta ? Math.max(0, Math.min(100, Math.round(busy))) : -1;
     }
 
     function syncLegacy() {
@@ -256,11 +202,11 @@ Singleton {
                 "vramTotalGb": old.vramTotalGb,
                 "status": old.status,
                 "powerW": old.powerW,
-                "energyUj": old.energyUj,
-                "energyTime": old.energyTime
+                "energyUj": old.energyUj
             }) : incoming);
         }
         gpus = merged;
+        gpuDevices = next;
         detected = true;
         syncLegacy();
     }
@@ -275,22 +221,10 @@ Singleton {
             }
         }
 
-        var cur = idx >= 0 ? next[idx] : emptyGpu(id, "gpu", "GPU", "", "", "");
-        if (patch.energyUj !== undefined && patch.energyUj >= 0) {
-            var now = Date.now();
-            if (cur.energyUj >= 0 && cur.energyTime > 0 && patch.energyUj >= cur.energyUj) {
-                var dt = (now - cur.energyTime) / 1000;
-                if (dt > 0)
-                    patch.powerW = (patch.energyUj - cur.energyUj) / dt / 1000000;
-            }
-            patch.energyTime = now;
-        }
-
+        if (idx < 0) return;
+        var cur = next[idx];
         var merged = cloneWith(cur, patch);
-        if (idx >= 0)
-            next[idx] = merged;
-        else
-            next.push(merged);
+        next[idx] = merged;
         gpus = next;
         syncLegacy();
     }
@@ -299,50 +233,46 @@ Singleton {
 
     Process {
         id: detectProc
-        command: ["sh", "-c",
-            "tp=''; for h in /sys/class/hwmon/hwmon*; do for l in \"$h\"/temp*_label; do [ -r \"$l\" ] || continue; [ \"$(cat \"$l\")\" = Tdie ] && { tp=\"${l%_label}_input\"; break 2; }; done; done; "
-            + "[ -z \"$tp\" ] && for h in /sys/class/hwmon/hwmon*; do for l in \"$h\"/temp*_label; do [ -r \"$l\" ] || continue; [ \"$(cat \"$l\")\" = 'Package id 0' ] && { tp=\"${l%_label}_input\"; break 2; }; done; done; "
-            + "[ -z \"$tp\" ] && for h in /sys/class/hwmon/hwmon*; do for l in \"$h\"/temp*_label; do [ -r \"$l\" ] || continue; [ \"$(cat \"$l\")\" = Tctl ] && { tp=\"${l%_label}_input\"; break 2; }; done; done; "
-            + "[ -z \"$tp\" ] && for h in /sys/class/hwmon/hwmon*; do [ -r \"$h/temp1_input\" ] && { tp=\"$h/temp1_input\"; break; }; done; "
-            + "echo \"TEMP|$tp\"; "
-            + "i=0; a=0; for d in /sys/class/drm/card*/device; do [ -r \"$d/vendor\" ] || continue; v=$(cat \"$d/vendor\" 2>/dev/null); case \"$v\" in 0x8086|0x1002) pci=$(basename \"$(readlink -f \"$d\")\"); dev=$(cat \"$d/device\" 2>/dev/null); label=$(lspci -D -s \"$pci\" 2>/dev/null | sed 's/^[^ ]* //'); [ -z \"$label\" ] && label=\"$v $dev\"; if [ \"$v\" = 0x1002 ]; then vendor=amd; id=\"amd${a}\"; a=$((a+1)); else vendor=intel; id=\"intel${i}\"; i=$((i+1)); fi; echo \"GPU|$id|$vendor|$pci|$label|$d|$dev\";; esac; done; "
-            + "n=0; if command -v lspci >/dev/null 2>&1; then lspci -Dnn | while IFS= read -r line; do case \"$line\" in *NVIDIA*) case \"$line\" in *VGA*|*3D*|*Display*) pci=${line%% *}; label=$(printf '%s' \"$line\" | sed 's/^[^ ]* //'); echo \"GPU|nvidia${n}|nvidia|$pci|$label||\"; n=$((n+1));; esac;; esac; done; fi"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var next = [];
-                var lines = this.text.split("\n");
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i].trim();
-                    if (line.length === 0)
-                        continue;
-                    var p = line.split("|");
-                    if (p[0] === "TEMP") {
-                        root.tempPath = p.slice(1).join("|");
-                    } else if (p[0] === "GPU" && p.length >= 5) {
-                        var id = p[1];
-                        var vendor = p[2];
-                        var pci = p[3] || "";
-                        var label = p[4] || "";
-                        var path = p[5] || "";
-                        var deviceId = p[6] || "";
-                        next.push(root.emptyGpu(id, vendor, label, pci, path, deviceId));
-                    }
-                }
+        command: ["timeout", "--kill-after=1s", "2s", "python3",
+            decodeURIComponent(Qt.resolvedUrl("../scripts/gpu_stats.py").toString().replace(/^file:\/\//, "")), "discover"]
+        stdout: StdioCollector { id: discoveryOutput }
+        stderr: SplitParser {}
+        onExited: (code) => {
+            if (code !== 0) return;
+            try {
+                var result = JSON.parse(discoveryOutput.text);
+                if (!result || !Array.isArray(result.devices)) return;
+                root.tempPath = typeof result.tempPath === "string" ? result.tempPath : "";
+                var next = [], seen = Object.create(null);
+                result.devices.forEach(function(d) {
+                    if (!d || !Gpu.pciAddress(d.pci) || seen[Gpu.pciAddress(d.pci)]
+                            || ["intel", "nvidia", "amd"].indexOf(d.vendor) === -1) return;
+                    d.pci = Gpu.pciAddress(d.pci);
+                    seen[d.pci] = true;
+                    var gpu = root.emptyGpu(d.pci, d.vendor, d.label, d.pci, d.devPath, d.deviceId);
+                    gpu.nodes = Array.isArray(d.nodes) ? d.nodes : [];
+                    gpu.hwmon = typeof d.hwmon === "string" ? d.hwmon : "";
+                    next.push(gpu);
+                });
                 root.setDetectedGpus(next);
-                if (root.open)
-                    root.primeAll();
-            }
+                if (root.open) root.primeAll();
+            } catch (_) {}
+        }
+    }
+
+    Instantiator {
+        model: root.gpuDevices
+        delegate: GpuCollector {
+            required property var modelData
+            device: modelData
+            active: root.open
+            onSampled: (id, patch) => root.updateGpu(id, patch)
         }
     }
 
     Process {
         id: fastProc
-        command: ["sh", "-c",
-            "read -r _ a b c d e f g h _ < /proc/stat; echo \"CPU $((a+b+c+d+e+f+g+h)) $((d+e))\"; "
-            + "awk '/^MemTotal:/{mt=$2}/^MemAvailable:/{ma=$2}/^SwapTotal:/{st=$2}/^SwapFree:/{sf=$2}END{print \"MEM\",mt,ma,st,sf}' /proc/meminfo; "
-            + "awk 'NR>2{gsub(\":\",\" \");if($1!=\"lo\"){rx+=$2;tx+=$10}}END{print \"NET\",rx+0,tx+0}' /proc/net/dev; "
-            + "if [ -n \"$1\" ] && [ -r \"$1\" ]; then echo \"TMP $(cat \"$1\")\"; else echo 'TMP -'; fi",
-            "_", root.tempPath]
+        command: ["sh", decodeURIComponent(Qt.resolvedUrl("../scripts/sysmon-fast.sh").toString().replace(/^file:\/\//, "")), root.tempPath]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.split("\n");
@@ -388,87 +318,8 @@ Singleton {
     }
 
     Process {
-        id: gpuProc
-        command: ["sh", "-c",
-            "for h in /sys/class/hwmon/hwmon*; do [ -r \"$h/name\" ] || continue; [ \"$(cat \"$h/name\")\" = xe ] || continue; pkg=''; vram=''; vram_sum=0; vram_n=0; energy=''; for l in \"$h\"/temp*_label; do [ -r \"$l\" ] || continue; lab=$(cat \"$l\"); input=\"${l%_label}_input\"; val=$(cat \"$input\" 2>/dev/null); [ \"$lab\" = pkg ] && pkg=\"$val\"; [ \"$lab\" = vram ] && vram=\"$val\"; case \"$lab\" in vram_ch_*) [ -n \"$val\" ] && { vram_sum=$((vram_sum + val)); vram_n=$((vram_n + 1)); };; esac; done; [ \"$vram_n\" -gt 0 ] && vram=$((vram_sum / vram_n)); [ -z \"$pkg\" ] && [ -r \"$h/temp1_input\" ] && pkg=$(cat \"$h/temp1_input\" 2>/dev/null); [ -r \"$h/energy1_input\" ] && energy=$(cat \"$h/energy1_input\" 2>/dev/null); pkgc=-1; vramc=-1; [ -n \"$pkg\" ] && pkgc=$((pkg/1000)); [ -n \"$vram\" ] && vramc=$((vram/1000)); echo \"GPUSTAT|intel0|-1|$pkgc|0|0|sensor|$vramc|${energy:--1}\"; break; done; "
-            + "for p in /proc/[0-9]*/fdinfo/*; do [ -r \"$p\" ] || continue; echo FILE; cat \"$p\" 2>/dev/null; done | awk 'function unit_bytes(v,u){if(u==\"KiB\")return v*1024;if(u==\"MiB\")return v*1048576;if(u==\"GiB\")return v*1073741824;return v} function flush(e,key){if(driver==\"xe\"&&pdev!=\"\"){key=pdev \"|\" client;if(!(key in seen)){seen[key]=1;for(e in cyc){cycles[pdev SUBSEP e]+=cyc[e];totals[pdev SUBSEP e]=tot[e];caps[pdev SUBSEP e]=cap[e]>0?cap[e]:1}vram[pdev]+=residentVram>0?residentVram:totalVram}}delete cyc;delete tot;delete cap;driver=\"\";pdev=\"\";client=\"\";totalVram=0;residentVram=0} /^FILE$/{flush();next} /^drm-driver:/{driver=$2} /^drm-client-id:/{client=$2} /^drm-pdev:/{pdev=$2} /^drm-cycles-/{e=$1;sub(/^drm-cycles-/,\"\",e);sub(/:$/,\"\",e);cyc[e]=$2} /^drm-total-cycles-/{e=$1;sub(/^drm-total-cycles-/,\"\",e);sub(/:$/,\"\",e);tot[e]=$2} /^drm-engine-capacity-/{e=$1;sub(/^drm-engine-capacity-/,\"\",e);sub(/:$/,\"\",e);cap[e]=$2} /^drm-resident-vram0:/{residentVram=unit_bytes($2,$3)} /^drm-total-vram0:/{totalVram=unit_bytes($2,$3)} END{flush();for(k in cycles){split(k,a,SUBSEP);print \"XECYCLE|\" a[1] \"|\" a[2] \"|\" cycles[k] \"|\" totals[k] \"|\" caps[k]}for(p in vram)printf \"XEVRAM|%s|%.3f\\n\",p,vram[p]/1073741824}'; "
-            + "a=0; for d in /sys/class/drm/card*/device; do [ -r \"$d/vendor\" ] || continue; [ \"$(cat \"$d/vendor\" 2>/dev/null)\" = 0x1002 ] || continue; [ -r \"$d/gpu_busy_percent\" ] || continue; busy=$(cat \"$d/gpu_busy_percent\" 2>/dev/null); temp=$(cat \"$d\"/hwmon/hwmon*/temp1_input 2>/dev/null | head -1); vu=$(cat \"$d/mem_info_vram_used\" 2>/dev/null); vt=$(cat \"$d/mem_info_vram_total\" 2>/dev/null); tempc=-1; [ -n \"$temp\" ] && tempc=$((temp/1000)); vug=$(awk -v b=\"${vu:-0}\" 'BEGIN{printf \"%.3f\", b/1073741824}'); vtg=$(awk -v b=\"${vt:-0}\" 'BEGIN{printf \"%.3f\", b/1073741824}'); echo \"GPUSTAT|amd${a}|${busy:--1}|$tempc|$vug|$vtg|ok|-1|-1\"; a=$((a+1)); done; "
-            + "if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then nvidia-smi --query-gpu=index,utilization.gpu,temperature.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null | awk -F', *' '{printf \"GPUSTAT|nvidia%s|%s|%s|%.3f|%.3f|ok|-1|-1\\n\",$1,$2,$3,$4/1024,$5/1024}'; fi"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var patches = {};
-                var xeSamples = {};
-                var lines = this.text.split("\n");
-                for (var i = 0; i < lines.length; i++) {
-                    var p = lines[i].trim().split("|");
-                    if (p[0] === "GPUSTAT" && p.length >= 7) {
-                        var id = p[1];
-                        var load = parseFloat(p[2]);
-                        var temp = parseFloat(p[3]);
-                        var used = parseFloat(p[4]);
-                        var total = parseFloat(p[5]);
-                        var status = p[6] || "";
-                        var vramTemp = p.length > 7 ? parseFloat(p[7]) : -1;
-                        var energy = p.length > 8 ? parseFloat(p[8]) : -1;
-                        var patch = patches[id] || {};
-                        patch.load = isNaN(load) ? -1 : Math.max(-1, Math.min(100, Math.round(load)));
-                        patch.temp = isNaN(temp) ? -1 : Math.round(temp);
-                        patch.status = status.length > 0 ? status : "ok";
-                        if (!isNaN(vramTemp))
-                            patch.vramTemp = Math.round(vramTemp);
-                        if (!isNaN(used) && !isNaN(total) && total > 0) {
-                            patch.hasVram = true;
-                            patch.vramUsedGb = used;
-                            patch.vramTotalGb = total;
-                        }
-                        if (!isNaN(energy) && energy >= 0)
-                            patch.energyUj = energy;
-                        patches[id] = patch;
-                    } else if (p[0] === "XECYCLE" && p.length >= 6) {
-                        var pci = p[1];
-                        var xeId = root.gpuIdForPci(pci, "intel");
-                        if (!xeSamples[xeId])
-                            xeSamples[xeId] = [];
-                        xeSamples[xeId].push({
-                            "engine": p[2],
-                            "cycles": parseFloat(p[3]) || 0,
-                            "total": parseFloat(p[4]) || 0,
-                            "capacity": parseFloat(p[5]) || 1
-                        });
-                    } else if (p[0] === "XEVRAM" && p.length >= 3) {
-                        var vramId = root.gpuIdForPci(p[1], "intel");
-                        var vramPatch = patches[vramId] || {};
-                        var vramUsed = parseFloat(p[2]);
-                        var vramTotal = root.gpuKnownVramTotal(vramId);
-                        if (!isNaN(vramUsed) && vramTotal > 0) {
-                            vramPatch.hasVram = true;
-                            vramPatch.vramUsedGb = vramUsed;
-                            vramPatch.vramTotalGb = vramTotal;
-                            patches[vramId] = vramPatch;
-                        }
-                    }
-                }
-
-                for (var sampleId in xeSamples) {
-                    var pct = root.xeLoad(sampleId, xeSamples[sampleId]);
-                    var xePatch = patches[sampleId] || {};
-                    if (pct >= 0) {
-                        xePatch.load = pct;
-                        xePatch.status = "ok";
-                    }
-                    patches[sampleId] = xePatch;
-                }
-
-                for (var patchId in patches)
-                    root.updateGpu(patchId, patches[patchId]);
-            }
-        }
-    }
-
-    Process {
         id: slowProc
-        command: ["sh", "-c",
-            "df -P / | awk 'NR==2{gsub(\"%\",\"\",$5);print \"DISK \"$5}'; awk '{print \"UP \"int($1)}' /proc/uptime"]
+        command: ["sh", decodeURIComponent(Qt.resolvedUrl("../scripts/sysmon-slow.sh").toString().replace(/^file:\/\//, ""))]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.split("\n");
@@ -488,13 +339,6 @@ Singleton {
         running: root.open
         repeat: true
         onTriggered: if (!fastProc.running) fastProc.running = true
-    }
-
-    Timer {
-        interval: 1000
-        running: root.open && root.hasGpu
-        repeat: true
-        onTriggered: if (!gpuProc.running) gpuProc.running = true
     }
 
     Timer {

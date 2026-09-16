@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 PillSurface {
@@ -17,20 +18,6 @@ PillSurface {
 
 
     property point lastPointer: Qt.point(-1, -1)
-
-    readonly property point caretPoint: {
-        void root.width;
-        void root.height;
-        void search.input.width;
-        return search.input.mapToItem(root,
-            search.input.cursorRectangle.x + search.input.cursorRectangle.width / 2,
-            search.input.cursorRectangle.y + search.input.cursorRectangle.height / 2);
-    }
-    readonly property real caretX: caretPoint.x
-    readonly property real caretY: caretPoint.y
-
-    ameForm: "caret"
-    amePoint: Qt.point(caretX, caretY)
 
     readonly property var results: {
         var all = Cliphist.entries;
@@ -122,6 +109,7 @@ PillSurface {
             }
 
             Text {
+                textFormat: Text.PlainText
                 visible: Flags.showGlyphs
                 anchors.centerIn: parent
                 text: "掃"
@@ -152,6 +140,7 @@ PillSurface {
                 anchors.margins: -5 * root.s
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onEntered: Glitch.hover(root)
                 onPressed: wipeHeat.press()
                 onReleased: wipeHeat.release()
                 onExited: wipeHeat.cancel()
@@ -183,6 +172,7 @@ PillSurface {
     }
 
     Text {
+        textFormat: Text.PlainText
         anchors.centerIn: list
         visible: root.results.length === 0
         text: root.query.length ? "No matches" : "History empty"
@@ -225,20 +215,20 @@ PillSurface {
                 }
             }
 
-            Rectangle {
+            ButtonSurface {
+                outlined: row.selected
                 anchors.fill: parent
-                radius: 9 * root.s
+                radius: 4 * root.s
                 visible: row.selected || rowHover.hovered
-                color: row.selected ? Theme.frameBg : Qt.rgba(0.94, 0.88, 0.84, 0.03)
-                border.width: row.selected ? 1 : 0
-                border.color: Theme.frameBorder
             }
 
             MouseArea {
                 id: rowArea
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
+                hoverEnabled: true
+                onEntered: Glitch.hover(root)
+                onClicked: { Glitch.click(root);
                     root.selectedIndex = row.index;
                     root.activate();
                 }
@@ -255,7 +245,7 @@ PillSurface {
                     visible: row.entry !== undefined && row.entry.isImage
                     width: visible ? 52 * root.s : 0
                     height: 32 * root.s
-                    radius: 6 * root.s
+                    radius: 3 * root.s
                     color: Theme.tileBg
                     border.width: 1
                     border.color: Theme.border
@@ -292,6 +282,7 @@ PillSurface {
                 }
 
                 Text {
+                    textFormat: Text.PlainText
                     id: sizeTag
                     anchors.right: tail.left
                     anchors.rightMargin: width > 0 ? 8 * root.s : 0
@@ -312,6 +303,7 @@ PillSurface {
                     height: Math.max(ret.implicitHeight, dismiss.implicitHeight)
 
                     Text {
+                        textFormat: Text.PlainText
                         id: ret
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
@@ -324,6 +316,7 @@ PillSurface {
                     }
 
                     Text {
+                        textFormat: Text.PlainText
                         id: dismiss
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
@@ -340,7 +333,8 @@ PillSurface {
                             enabled: rowHover.hovered
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.removeAt(row.index)
+                            onEntered: Glitch.hover(root)
+                            onClicked: { Glitch.click(root); root.removeAt(row.index); }
                         }
                     }
                 }

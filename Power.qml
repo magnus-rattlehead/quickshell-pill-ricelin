@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 PillSurface {
@@ -16,17 +17,6 @@ PillSurface {
 
     property string hovered: ""
     property int focusIndex: -1
-    readonly property real anchorX: tiles.x + tiles.width / 2
-    readonly property real anchorY: tiles.y - 10 * root.s
-    property string soulKey: ""
-    property real hoverX: 0
-    property real hoverY: 0
-    readonly property real heatX: soulKey.length ? hoverX : anchorX
-    readonly property real heatY: soulKey.length ? hoverY : anchorY
-
-    ameForm: soulKey.length ? "soul" : "off"
-    amePoint: Qt.point(heatX, heatY)
-
     readonly property var actions: [
         { key: "lock",     glyph: "lock",     label: "Lock",     danger: false, dispatch: "",             argv: ["sh", "-c", "pidof hyprlock || loginctl lock-session"] },
         { key: "logout",   glyph: "logout",   label: "Logout",   danger: true,  dispatch: "hl.dsp.exit()", argv: [] },
@@ -37,7 +27,7 @@ PillSurface {
 
     readonly property int splitAfter: 2
 
-    component IconToggleChip: Rectangle {
+    component IconToggleChip: ButtonSurface {
         id: chip
         property string glyph: ""
         property bool on: false
@@ -47,11 +37,7 @@ PillSurface {
 
         width: 26 * root.s
         height: 26 * root.s
-        radius: 8 * root.s
-        color: chip.on ? Theme.frameBg : "transparent"
-        border.width: 1
-        border.color: chip.on ? Theme.frameBorder : Theme.border
-
+        radius: 4 * root.s
         GlyphIcon {
             anchors.centerIn: parent
             width: 15 * root.s
@@ -64,9 +50,12 @@ PillSurface {
         HoverHandler { id: chipHover }
 
         MouseArea {
+            id: chipArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: chip.toggled()
+            hoverEnabled: true
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root); chip.toggled(); }
         }
 
         Tooltip {
@@ -104,7 +93,7 @@ PillSurface {
 
     onActiveChanged: if (!active) {
         hovered = "";
-        soulKey = "";
+
         focusIndex = -1;
     }
 
@@ -121,6 +110,7 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8 * root.s
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 visible: Flags.showGlyphs
                 text: "電"
@@ -130,6 +120,7 @@ PillSurface {
                 font.pixelSize: 16 * root.s
             }
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "POWER"
                 color: Theme.subtle
@@ -184,24 +175,20 @@ PillSurface {
                     readonly property bool kbFocus: root.focusIndex === cell.index
                     readonly property bool isHover: root.hovered === cell.modelData.key || tile.kbFocus
                     readonly property bool lit: isHover
-                    readonly property color accent: cell.modelData.danger ? Theme.vermLit : Theme.cream
+                    readonly property color accent: cell.modelData.danger ? Theme.red : Theme.cream
 
                     onKbFocusChanged: {
                         if (!tile.kbFocus)
                             return;
                         root.hovered = cell.modelData.key;
-                        root.soulKey = cell.modelData.key;
-                        const c = tile.mapToItem(root, tile.width / 2, 0);
-                        root.hoverX = c.x;
-                        root.hoverY = c.y - 9 * root.s;
+
+
                     }
 
-                    Rectangle {
+                    ButtonSurface {
+                        outlined: tile.kbFocus
                         anchors.fill: parent
                         radius: Motion.rTile * root.s
-                        color: tile.isHover ? Theme.frameBg : "transparent"
-                        border.width: 1
-                        border.color: tile.isHover ? Theme.frameBorder : Theme.border
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
@@ -215,21 +202,20 @@ PillSurface {
                     }
 
                     MouseArea {
+                        id: powerArea
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onEntered: {
+                        onEntered: { Glitch.hover(root);
                             root.hovered = cell.modelData.key;
-                            root.soulKey = cell.modelData.key;
-                            const c = tile.mapToItem(root, tile.width / 2, 0);
-                            root.hoverX = c.x;
-                            root.hoverY = c.y - 9 * root.s;
+
+
                         }
                         onExited: {
                             if (root.hovered === cell.modelData.key)
                                 root.hovered = "";
                         }
-                        onClicked: root.run(cell.modelData)
+                        onClicked: { Glitch.click(root); root.run(cell.modelData); }
                     }
                 }
             }
@@ -237,6 +223,7 @@ PillSurface {
     }
 
     Text {
+        textFormat: Text.PlainText
         id: label
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: tiles.bottom
@@ -249,7 +236,7 @@ PillSurface {
             return null;
         }
         text: act ? act.label : ""
-        color: act && act.danger ? Theme.vermLit : Theme.subtle
+        color: act && act.danger ? Theme.red : Theme.subtle
         font.family: Theme.font
         font.pixelSize: 11 * root.s
         font.weight: Font.Medium

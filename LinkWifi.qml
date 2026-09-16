@@ -3,9 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import Quickshell
-import Quickshell.Io
-import Quickshell.Networking
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 Item {
@@ -16,53 +15,52 @@ Item {
 
     signal back()
 
-    readonly property var devices: (typeof Networking !== "undefined" && Networking && Networking.devices) ? Networking.devices.values : []
-    readonly property var wifiDev: devices.find(function(d) { return d && d.type === DeviceType.Wifi }) || null
-    readonly property bool wifiOn: (typeof Networking !== "undefined" && Networking) ? Networking.wifiEnabled : false
-    readonly property var nets: (wifiDev && wifiDev.networks) ? wifiDev.networks.values : []
-    readonly property var netsSorted: nets.slice().sort(function(a, b) {
-        return ((b ? b.signalStrength : 0) || 0) - ((a ? a.signalStrength : 0) || 0)
-    })
-    readonly property var activeNet: nets.find(function(n) { return n && n.connected }) || null
-    readonly property string statusText: !wifiOn ? "Off"
-        : (activeNet ? (activeNet.name || "Connected") : "Not connected")
+    WifiController {
+        id: controller
+        active: root.active
+        onConnected: { root.expandedSsid = ""; root.pwDraft = ""; }
+    }
+    readonly property var wifiDev: controller.wifiDev
+    readonly property bool wifiOn: controller.wifiOn
+    readonly property var nets: controller.nets
+    readonly property var netsSorted: controller.netsSorted
+    readonly property var activeNet: controller.activeNet
+    readonly property string statusText: controller.statusText
+    readonly property var knownProfiles: controller.knownProfiles
+    readonly property bool connecting: controller.connecting
+    readonly property bool connectFailed: controller.connectFailed
+    readonly property bool scanning: controller.scanning
+    readonly property string revealedSsid: controller.revealedSsid
+    readonly property string revealedPw: controller.revealedPw
+    readonly property bool revealResolved: controller.revealResolved
 
-    property var securityMap: ({})
-    property var knownProfiles: ({})
+    function refresh() { controller.refresh(); }
+    function isSecured(ssid) { return controller.isSecured(ssid); }
+    function toggleWifi() { controller.toggleWifi(); }
+    function startScan() { controller.startScan(); }
+    function stopScan() { controller.stopScan(); }
+    function hidePassword() { controller.hidePassword(); }
+    function revealPassword(ssid) { controller.revealPassword(ssid); }
+    function connectWithPassword(ssid, pw) {
+        controller.connectWithPassword(ssid, pw);
+        root.pwDraft = "";
+    }
+    function connectKnown(net) { root.expandedSsid = ""; controller.connectKnown(net); }
+    function disconnectNetwork(net) { root.expandedSsid = ""; controller.disconnectNetwork(net); }
+    function forgetNetwork(ssid) { root.expandedSsid = ""; controller.forgetNetwork(ssid); }
+
+
     property string expandedSsid: ""
-    property bool connecting: false
-    property bool connectFailed: false
-    property bool scanning: false
     property int navIndex: 0
     property string actionFocus: "row"
     property string focusTarget: "list"
 
 
-    property string revealedSsid: ""
-    property string revealedPw: ""
-    property bool revealResolved: false
-
-    readonly property string hsCon: "RicelinHotspot"
-    readonly property string hsIface: wifiDev ? (wifiDev.name || "wlan0") : "wlan0"
-    property string computerName: ""
-    property bool hsNameFromProfile: false
-    property string hsName: "Ricelin"
-    property string hsPw: ""
-    property bool hsActive: false
-    property bool hsBusy: false
-    property string hsEdit: ""
-    property string hsDraft: ""
-
-
     property string pwDraft: ""
-    property string pendingPw: ""
-    property string attemptSsid: ""
-    property bool attemptWasKnown: false
 
     readonly property int netCount: netsSorted.length
-    readonly property int rowCount: netCount + (wifiOn ? 1 : 0)
+    readonly property int rowCount: netCount
     readonly property bool listFocused: focusTarget === "list"
-    readonly property bool hotspotFocused: wifiOn && listFocused && navIndex === netCount
     readonly property var focusTargets: {
         var targets = ["back"];
         if (wifiOn)
@@ -73,26 +71,7 @@ Item {
         return targets;
     }
 
-    implicitHeight: hsBlock.y + hsBlock.height
-
-    function isSecured(ssid) {
-        var sec = securityMap[ssid];
-        return sec !== undefined && sec !== "" && sec !== "--";
-    }
-
-    function refresh() {
-        secProc.running = true;
-        profProc.running = true;
-    }
-
-
-    function splitTerse(line) {
-        for (var k = line.length - 1; k >= 0; k--) {
-            if (line[k] === ":" && (k === 0 || line[k - 1] !== "\\"))
-                return { head: line.slice(0, k).replace(/\\:/g, ":"), tail: line.slice(k + 1) };
-        }
-        return null;
-    }
+    implicitHeight: listFrame.y + listFrame.height
 
 
     function activateNetwork(net) {
@@ -103,80 +82,28 @@ Item {
             expandedSsid = "";
             return;
         }
-        if (net.connected || knownProfiles[ssid] === true) {
-            connectFailed = false;
+        if (net.connected || !!knownProfiles[ssid]) {
             pwDraft = "";
             expandedSsid = ssid;
             return;
         }
         if (!isSecured(ssid)) {
             expandedSsid = "";
-            if (typeof net.connect === "function")
-                net.connect();
+            controller.connectKnown(net);
             refresh();
             return;
         }
-        connectFailed = false;
+        controller.connectFailed = false;
         pwDraft = "";
         expandedSsid = ssid;
     }
 
-
-    function connectKnown(net) {
-        if (!net)
-            return;
-        expandedSsid = "";
-        if (typeof net.connect === "function")
-            net.connect();
-        refresh();
-    }
-
-    function disconnectNetwork(net) {
-        if (!net)
-            return;
-        expandedSsid = "";
-        if (typeof net.disconnect === "function")
-            net.disconnect();
-        refresh();
-    }
-
-
-    function forgetNetwork(ssid) {
-        if (forgetProc.running || !ssid.length)
-            return;
-        expandedSsid = "";
-        forgetProc.command = ["nmcli", "connection", "delete", "id", ssid];
-        forgetProc.running = true;
-    }
-
-
-    function revealPassword(ssid) {
-        if (!ssid.length)
-            return;
-        if (revealedSsid === ssid) {
-            hidePassword();
-            return;
-        }
-        revealedSsid = ssid;
-        revealedPw = "";
-        revealResolved = false;
-        revealProc.command = ["nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", "id", ssid];
-        revealProc.running = true;
-    }
-
-    function hidePassword() {
-        revealedSsid = "";
-        revealedPw = "";
-        revealResolved = false;
-    }
 
     function currentNet() {
         return navIndex >= 0 && navIndex < netCount ? netsSorted[navIndex] : null;
     }
 
     function currentActionNames() {
-        if (hotspotFocused)
-            return ["row"];
 
         var net = currentNet();
         if (!net)
@@ -184,11 +111,12 @@ Item {
 
         var names = ["row"];
         var ssid = net.name || "";
-        if (expandedSsid === ssid && (net.connected || knownProfiles[ssid] === true)) {
+        if (expandedSsid === ssid && (net.connected || !!knownProfiles[ssid])) {
             names.push("primary");
-            if (knownProfiles[ssid] === true)
+            if (knownProfiles[ssid]) {
                 names.push("reveal");
-            names.push("forget");
+                names.push("forget");
+            }
         }
         return names;
     }
@@ -210,7 +138,7 @@ Item {
     }
 
     function normalizeFocusTarget() {
-        if (focusTargets.length === 0) {
+        if (!focusTargets || focusTargets.length === 0) {
             focusTarget = "";
             return;
         }
@@ -270,7 +198,7 @@ Item {
     }
 
     function moveTab(dir) {
-        if (focusTargets.length === 0)
+        if (!focusTargets || focusTargets.length === 0)
             return false;
         normalizeFocusTarget();
         var idx = focusTargets.indexOf(focusTarget);
@@ -284,20 +212,6 @@ Item {
         return true;
     }
 
-    function toggleWifi() {
-        if (typeof Networking !== "undefined" && Networking)
-            Networking.wifiEnabled = !Networking.wifiEnabled;
-    }
-
-    function toggleHotspot() {
-        if (hsActive) {
-            stopHotspot();
-        } else {
-            if (hsPw.length < 8)
-                hsPw = generatePw();
-            applyHotspot();
-        }
-    }
 
     function activateFocused() {
         if (focusTarget === "back") {
@@ -317,10 +231,7 @@ Item {
         }
 
         normalizeNav();
-        if (hotspotFocused) {
-            toggleHotspot();
-            return true;
-        }
+
 
         var net = currentNet();
         if (!net)
@@ -364,36 +275,9 @@ Item {
     }
 
 
-    function connectWithPassword(ssid, pw) {
-        if (connProc.running || !pw.length)
-            return;
-        connecting = true;
-        connectFailed = false;
-        attemptSsid = ssid;
-        attemptWasKnown = knownProfiles[ssid] === true;
-        pendingPw = pw;
-        connProc.command = ["nmcli", "--ask", "dev", "wifi", "connect", ssid];
-        connProc.running = true;
-    }
-
-
-    function startScan() {
-        if (!wifiOn)
-            return;
-        scanning = true;
-        rescanProc.running = true;
-        scanTimer.restart();
-    }
-
-    function stopScan() {
-        scanning = false;
-        scanTimer.stop();
-    }
-
     onActiveChanged: {
         if (active) {
             refresh();
-            refreshHotspot();
             normalizeFocusTarget();
             normalizeNav();
             scrollToNav();
@@ -401,9 +285,8 @@ Item {
             stopScan();
             focusTarget = "list";
             expandedSsid = "";
-            connectFailed = false;
-            hsEdit = "";
             hidePassword();
+            pwDraft = "";
         }
     }
 
@@ -415,6 +298,7 @@ Item {
     }
 
     onExpandedSsidChanged: {
+        pwDraft = "";
         if (revealedSsid !== expandedSsid)
             hidePassword();
         normalizeNav();
@@ -424,229 +308,6 @@ Item {
         normalizeNav();
     }
     onKnownProfilesChanged: normalizeNav()
-
-    Binding {
-        target: root.wifiDev
-        property: "scannerEnabled"
-        value: root.active && root.wifiOn
-        when: root.wifiDev !== null
-    }
-
-    Timer {
-        id: scanTimer
-        interval: 10000
-        onTriggered: root.stopScan()
-    }
-
-    Process {
-        id: rescanProc
-        command: ["nmcli", "dev", "wifi", "rescan"]
-    }
-
-
-    function applyHotspot() {
-        if (hsBusy || hsPw.length < 8)
-            return;
-        hsBusy = true;
-        hsApplyProc.command = ["sh", "-c",
-            'c="' + hsCon + '"; '
-            + 'if nmcli -t connection show "$c" >/dev/null 2>&1; then '
-            +   'nmcli connection modify "$c" 802-11-wireless.ssid "$1" 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$2"; '
-            + 'else '
-            +   'nmcli connection add type wifi ifname "$3" con-name "$c" autoconnect no 802-11-wireless.ssid "$1" 802-11-wireless.mode ap 802-11-wireless-security.key-mgmt wpa-psk 802-11-wireless-security.psk "$2" ipv4.method shared; '
-            + 'fi; '
-            + 'nmcli connection up "$c"',
-            "sh", hsName, hsPw, hsIface];
-        hsApplyProc.running = true;
-    }
-
-    function stopHotspot() {
-        if (hsBusy)
-            return;
-        hsBusy = true;
-        hsDownProc.running = true;
-    }
-
-    function refreshHotspot() {
-        hsStateProc.running = true;
-        hsReadProc.running = true;
-    }
-
-
-    function commitHotspotEdit() {
-        if (hsEdit === "name") {
-            if (hsDraft.length)
-                hsName = hsDraft;
-        } else if (hsEdit === "pw") {
-            if (hsDraft.length >= 8)
-                hsPw = hsDraft;
-        }
-        hsEdit = "";
-        if (hsActive)
-            applyHotspot();
-    }
-
-
-    function generatePw() {
-        var cs = "abcdefghijkmnpqrstuvwxyz23456789";
-        var s = "";
-        for (var i = 0; i < 8; i++)
-            s += cs.charAt(Math.floor(Math.random() * cs.length));
-        return s;
-    }
-
-    Process {
-        id: hsApplyProc
-        onExited: {
-            root.hsBusy = false;
-            root.refreshHotspot();
-        }
-    }
-
-    Process {
-        id: hsDownProc
-        command: ["nmcli", "connection", "down", root.hsCon]
-        onExited: {
-            root.hsBusy = false;
-            root.refreshHotspot();
-        }
-    }
-
-    Process {
-        id: hsStateProc
-        command: ["sh", "-c", "nmcli -t -f NAME connection show --active | grep -qx \"$1\" && echo on || echo off", "sh", root.hsCon]
-        stdout: StdioCollector {
-            onStreamFinished: root.hsActive = this.text.trim() === "on"
-        }
-    }
-
-
-    Process {
-        id: hostNameProc
-        command: ["hostname", "-s"]
-        Component.onCompleted: running = true
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var name = this.text.trim();
-                if (!name.length)
-                    return;
-                root.computerName = name;
-                if (!root.hsNameFromProfile)
-                    root.hsName = name;
-            }
-        }
-    }
-
-    Process {
-        id: hsReadProc
-        command: ["nmcli", "-t", "-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk", "connection", "show", root.hsCon]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var lines = this.text.split("\n");
-                root.hsNameFromProfile = lines.length >= 1 && lines[0].length > 0;
-                if (root.hsNameFromProfile)
-                    root.hsName = lines[0];
-                else
-                    root.hsName = root.computerName.length ? root.computerName : "Ricelin";
-                if (lines.length >= 2 && lines[1].length)
-                    root.hsPw = lines[1];
-            }
-        }
-    }
-
-    Process {
-        id: secProc
-        command: ["nmcli", "-t", "-f", "SSID,SECURITY", "dev", "wifi", "list"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var map = {};
-                var lines = this.text.split("\n");
-                for (var i = 0; i < lines.length; i++) {
-                    if (!lines[i].length)
-                        continue;
-                    var parts = root.splitTerse(lines[i]);
-                    if (parts && parts.head.length)
-                        map[parts.head] = parts.tail;
-                }
-                root.securityMap = map;
-            }
-        }
-    }
-
-    Process {
-        id: profProc
-        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var set = {};
-                var lines = this.text.split("\n");
-                for (var i = 0; i < lines.length; i++) {
-                    var parts = root.splitTerse(lines[i]);
-                    if (parts && parts.head.length && parts.tail === "802-11-wireless")
-                        set[parts.head] = true;
-                }
-                root.knownProfiles = set;
-            }
-        }
-    }
-
-    Process {
-        id: connProc
-        stdinEnabled: true
-        stdout: StdioCollector {}
-        stderr: StdioCollector {}
-        onStarted: {
-            write(root.pendingPw + "\n");
-            root.pendingPw = "";
-        }
-        onExited: function(exitCode) {
-            root.connecting = false;
-            if (exitCode === 0) {
-                root.expandedSsid = "";
-                root.pwDraft = "";
-                root.connectFailed = false;
-                root.refresh();
-            } else {
-                root.connectFailed = true;
-                if (!root.attemptWasKnown && root.attemptSsid.length) {
-                    cleanupProc.command = ["nmcli", "connection", "delete", "id", root.attemptSsid];
-                    cleanupProc.running = true;
-                }
-            }
-        }
-    }
-
-
-    Process {
-        id: cleanupProc
-        onExited: root.refresh()
-    }
-
-
-    Process {
-        id: forgetProc
-        onExited: root.refresh()
-    }
-
-
-    Process {
-        id: revealProc
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.revealedPw = this.text.replace(/\n+$/, "");
-                root.revealResolved = true;
-            }
-        }
-    }
-
-    onNetsChanged: if (active) secRefresh.restart()
-
-    Timer {
-        id: secRefresh
-        interval: 1200
-        onTriggered: if (root.active) secProc.running = true
-    }
-
 
     ScriptModel {
         id: netModel
@@ -671,13 +332,11 @@ Item {
                 width: 17 * root.s
                 height: 17 * root.s
 
-                Rectangle {
+                ButtonSurface {
+                    outlined: root.headerFocused("back")
                     anchors.fill: parent
                     anchors.margins: -4 * root.s
-                    radius: 6 * root.s
-                    color: backArea.containsMouse || root.headerFocused("back") ? Theme.frameBg : "transparent"
-                    border.width: root.headerFocused("back") ? 1 : 0
-                    border.color: Qt.alpha(Theme.vermLit, 0.85)
+                    radius: 3 * root.s
                 }
 
                 GlyphIcon {
@@ -693,11 +352,13 @@ Item {
                     anchors.margins: -6 * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.back()
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.back(); }
                 }
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "WIFI"
                 color: Theme.subtle
@@ -709,6 +370,7 @@ Item {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "· " + root.statusText
                 color: root.activeNet ? Theme.vermLit : Theme.faint
@@ -730,13 +392,11 @@ Item {
                 width: 16 * root.s
                 height: 16 * root.s
 
-                Rectangle {
+                ButtonSurface {
+                    outlined: root.headerFocused("scan")
                     anchors.fill: parent
                     anchors.margins: -4 * root.s
-                    radius: 6 * root.s
-                    color: reloadArea.containsMouse || root.headerFocused("scan") ? Theme.frameBg : "transparent"
-                    border.width: root.headerFocused("scan") ? 1 : 0
-                    border.color: Qt.alpha(Theme.vermLit, 0.85)
+                    radius: 3 * root.s
                 }
 
                 GlyphIcon {
@@ -763,7 +423,8 @@ Item {
                     anchors.margins: -6 * root.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.scanning ? root.stopScan() : root.startScan()
+                    onEntered: Glitch.hover(root)
+                    onClicked: { Glitch.click(root); root.scanning ? root.stopScan() : root.startScan(); }
                 }
             }
 
@@ -797,6 +458,7 @@ Item {
         readonly property bool scrollable: root.wifiOn && netCol.implicitHeight > height + 1
 
         Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: root.wifiOn && root.nets.length === 0
             text: "Searching networks…"
@@ -827,7 +489,7 @@ Item {
                         readonly property string ssid: (modelData && modelData.name) ? modelData.name : ""
                         readonly property bool isActive: modelData ? modelData.connected === true : false
                         readonly property bool secured: root.isSecured(ssid)
-                        readonly property bool known: root.knownProfiles[ssid] === true
+                        readonly property bool known: !!root.knownProfiles[ssid]
                         readonly property bool expanded: ssid.length > 0 && root.expandedSsid === ssid
                         readonly property bool confirming: expanded && (isActive || known)
                         readonly property bool asking: expanded && !confirming
@@ -847,24 +509,23 @@ Item {
                         onExpandedChanged: if (asking) Qt.callLater(syncPwField)
                         Component.onCompleted: if (asking) Qt.callLater(syncPwField)
 
-                        Rectangle {
+                        ButtonSurface {
+                            outlined: netItem.rowKeyFocus
                             width: parent.width
                             height: 30 * root.s
-                            radius: 9 * root.s
-                            color: netItem.isActive ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.14)
-                                : (rowHover.hovered || netItem.rowKeyFocus ? Theme.frameBg : "transparent")
-                            border.width: netItem.rowKeyFocus ? 1 : 0
-                            border.color: Qt.alpha(Theme.vermLit, 0.78)
-
+                            radius: 4 * root.s
                             HoverHandler { id: rowHover }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.activateNetwork(netItem.modelData)
+                                hoverEnabled: true
+                                onEntered: Glitch.hover(root)
+                                onClicked: { Glitch.click(root); root.activateNetwork(netItem.modelData); }
                             }
 
                             Text {
+                                textFormat: Text.PlainText
                                 anchors.left: parent.left
                                 anchors.leftMargin: 10 * root.s
                                 anchors.right: rowRight.left
@@ -917,6 +578,7 @@ Item {
                             height: 30 * root.s
 
                             Text {
+                                textFormat: Text.PlainText
                                 anchors.left: parent.left
                                 anchors.leftMargin: 10 * root.s
                                 anchors.right: confirmBtns.left
@@ -937,18 +599,15 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6 * root.s
 
-                                Rectangle {
+                                ButtonSurface {
+                                    outlined: netItem.primaryKeyFocus
                                     id: primaryBtn
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: primaryLabel.implicitWidth + 20 * root.s
                                     height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: primaryArea.containsMouse || netItem.primaryKeyFocus ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: netItem.primaryKeyFocus ? Qt.alpha(Theme.vermLit, 0.85)
-                                        : (primaryArea.containsMouse ? Theme.vermDim : Theme.border)
-
+                                    radius: 4 * root.s
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: primaryLabel
                                         anchors.centerIn: parent
                                         text: netItem.isActive ? "Disconnect" : "Connect"
@@ -964,29 +623,24 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: netItem.isActive
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); netItem.isActive
                                             ? root.disconnectNetwork(netItem.modelData)
-                                            : root.connectKnown(netItem.modelData)
+                                            : root.connectKnown(netItem.modelData); }
                                     }
                                 }
 
-                                Rectangle {
+                                ButtonSurface {
+                                    outlined: netItem.revealKeyFocus
                                     id: revealBtn
                                     anchors.verticalCenter: parent.verticalCenter
                                     visible: netItem.known
                                     readonly property bool shown: root.revealedSsid === netItem.ssid
                                     width: revealLabel.implicitWidth + 20 * root.s
                                     height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: revealArea.containsMouse || netItem.revealKeyFocus ? Theme.tileBg : "transparent"
-                                    border.width: 1
-                                    border.color: netItem.revealKeyFocus
-                                        ? Qt.alpha(Theme.vermLit, 0.85)
-                                        : revealBtn.shown
-                                        ? Theme.vermDim
-                                        : (revealArea.containsMouse ? Theme.vermDim : Theme.border)
-
+                                    radius: 4 * root.s
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: revealLabel
                                         anchors.centerIn: parent
                                         text: revealBtn.shown ? "Hide" : "Show"
@@ -1002,25 +656,21 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.revealPassword(netItem.ssid)
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); root.revealPassword(netItem.ssid); }
                                     }
                                 }
 
-                                Rectangle {
+                                ButtonSurface {
+                                    outlined: netItem.forgetKeyFocus
                                     id: forgetBtn
+                                    visible: netItem.known
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: forgetLabel.implicitWidth + 20 * root.s
                                     height: 22 * root.s
-                                    radius: 7 * root.s
-                                    color: forgetArea.containsMouse || netItem.forgetKeyFocus
-                                        ? Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.2)
-                                        : Qt.rgba(Theme.verm.r, Theme.verm.g, Theme.verm.b, 0.12)
-                                    border.width: 1
-                                    border.color: netItem.forgetKeyFocus
-                                        ? Qt.alpha(Theme.vermLit, 0.85)
-                                        : Qt.rgba(Theme.vermLit.r, Theme.vermLit.g, Theme.vermLit.b, 0.45)
-
+                                    radius: 4 * root.s
                                     Text {
+                                        textFormat: Text.PlainText
                                         id: forgetLabel
                                         anchors.centerIn: parent
                                         text: "Forget"
@@ -1036,7 +686,8 @@ Item {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.forgetNetwork(netItem.ssid)
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); root.forgetNetwork(netItem.ssid); }
                                     }
                                 }
                             }
@@ -1049,6 +700,7 @@ Item {
                             height: shown ? 24 * root.s : 0
 
                             Text {
+                                textFormat: Text.PlainText
                                 id: revealCaption
                                 anchors.left: parent.left
                                 anchors.leftMargin: 10 * root.s
@@ -1063,6 +715,7 @@ Item {
                             }
 
                             Text {
+                                textFormat: Text.PlainText
                                 visible: root.revealResolved && root.revealedPw.length === 0
                                 anchors.right: parent.right
                                 anchors.rightMargin: 10 * root.s
@@ -1117,6 +770,7 @@ Item {
                                 placeholderTextColor: Theme.faint
                                 selectByMouse: true
                                 selectionColor: Theme.verm
+                                text: netItem.asking ? root.pwDraft : ""
                                 onTextEdited: root.pwDraft = text
                                 onAccepted: root.connectWithPassword(netItem.ssid, text)
                             }
@@ -1158,13 +812,15 @@ Item {
                                         anchors.margins: -6 * root.s
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.connectWithPassword(netItem.ssid, pwField.text)
+                                        onEntered: Glitch.hover(root)
+                                        onClicked: { Glitch.click(root); root.connectWithPassword(netItem.ssid, pwField.text); }
                                     }
                                 }
                             }
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             visible: netItem.asking && root.connectFailed
                             text: "Connection failed"
                             color: Theme.vermLit
@@ -1209,169 +865,4 @@ Item {
         }
     }
 
-    Item {
-        id: hsBlock
-        anchors.top: listFrame.bottom
-        anchors.topMargin: 8 * root.s
-        anchors.left: parent.left
-        anchors.right: parent.right
-        visible: root.wifiOn
-        height: root.wifiOn ? hsCol.implicitHeight + 9 * root.s : 0
-        clip: true
-
-        Rectangle {
-            id: hsDivider
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 1
-            color: Theme.hair
-        }
-
-        Column {
-            id: hsCol
-            anchors.top: hsDivider.bottom
-            anchors.topMargin: 9 * root.s
-            anchors.left: parent.left
-            anchors.right: parent.right
-            spacing: 6 * root.s
-
-            component CredRow: Item {
-                id: cr
-                property string field: ""
-                property string label: ""
-                property string value: ""
-                property bool secret: false
-                readonly property bool editing: root.hsEdit === cr.field
-                width: parent ? parent.width : 0
-                height: 22 * root.s
-
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: cr.label
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 9 * root.s
-                    font.weight: Font.Medium
-                    font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1 * root.s
-                }
-
-                Text {
-                    visible: !cr.editing
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: cr.value.length ? cr.value : "tap to set"
-                    color: cr.value.length ? (cr.secret ? Theme.flameCore : Theme.cream) : Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 12 * root.s
-                    font.weight: Font.Medium
-                    font.features: { "tnum": 1 }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -6 * root.s
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.hsDraft = cr.value;
-                            root.hsEdit = cr.field;
-                            Qt.callLater(crField.forceActiveFocus);
-                        }
-                    }
-                }
-
-                TextField {
-                    id: crField
-                    visible: cr.editing
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 150 * root.s
-                    horizontalAlignment: TextInput.AlignRight
-                    background: null
-                    padding: 0
-                    color: Theme.cream
-                    font.family: Theme.font
-                    font.pixelSize: 12 * root.s
-                    placeholderText: cr.field === "pw" ? "8+ characters" : "Name"
-                    placeholderTextColor: Theme.faint
-                    selectByMouse: true
-                    selectionColor: Theme.verm
-                    text: cr.editing ? root.hsDraft : ""
-                    onTextEdited: root.hsDraft = text
-                    onAccepted: root.commitHotspotEdit()
-                }
-            }
-
-            Rectangle {
-                width: parent.width
-                height: 34 * root.s
-                radius: 10 * root.s
-                color: root.hsActive || root.hotspotFocused ? Theme.frameBg : "transparent"
-                border.width: root.hotspotFocused ? 1 : 0
-                border.color: Qt.alpha(Theme.vermLit, 0.78)
-
-                GlyphIcon {
-                    id: hsGlyph
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 17 * root.s
-                    height: 17 * root.s
-                    name: "hotspot"
-                    color: root.hsActive ? Theme.flameGlow : Theme.iconDim
-                    stroke: 1.7
-                }
-
-                Column {
-                    anchors.left: hsGlyph.right
-                    anchors.leftMargin: 11 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 1 * root.s
-
-                    Text {
-                        text: "Hotspot"
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 12.5 * root.s
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        text: root.hsBusy ? "…" : (root.hsActive ? "Active" : "Off")
-                        color: root.hsActive ? Theme.flameGlow : Theme.dim
-                        font.family: Theme.font
-                        font.pixelSize: 9.5 * root.s
-                        font.weight: Font.Medium
-                    }
-                }
-
-                LinkToggle {
-                    s: root.s
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8 * root.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    on: root.hsActive
-                    onToggled: {
-                        root.toggleHotspot();
-                    }
-                }
-            }
-
-            CredRow {
-                field: "name"
-                label: "Network"
-                value: root.hsName
-            }
-
-            CredRow {
-                field: "pw"
-                label: "Password"
-                value: root.hsPw
-                secret: true
-            }
-        }
-    }
 }

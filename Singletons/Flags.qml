@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -7,49 +8,20 @@ import Quickshell.Io
 Singleton {
     id: root
 
-    readonly property int appearanceVersion: 2
+    readonly property int appearanceVersion: 5
 
     property alias dnd: adapter.dnd
     property alias keepAwake: adapter.keepAwake
-    property alias time12h: adapter.time12h
     property alias clockSeconds: adapter.clockSeconds
     property alias showGlyphs: adapter.showGlyphs
     property alias accentColor: adapter.accentColor
-    property alias paletteMode: adapter.paletteMode
-    property alias wallpaperDir: adapter.wallpaperDir
     property alias uiScale: adapter.uiScale
-    property alias reduceMotion: adapter.reduceMotion
-    property alias manualHue: adapter.manualHue
-    property alias manualDark: adapter.manualDark
-    property alias manualSat: adapter.manualSat
     property alias uiFont: adapter.uiFont
     property alias pillOpacity: adapter.pillOpacity
-    property alias pillBlur: adapter.pillBlur
     property alias appearanceMigrated: adapter.appearanceMigrated
     property alias savedAppearanceVersion: adapter.appearanceVersion
     property alias topGap: adapter.topGap
-    property alias appGap: adapter.appGap
-    property alias recordCountdown: adapter.recordCountdown
-    property alias recordDir: adapter.recordDir
-    property alias recordFps: adapter.recordFps
-    property alias recordQuality: adapter.recordQuality
-    property alias recordCursor: adapter.recordCursor
-    property alias recordMic: adapter.recordMic
-    property alias recordDesktop: adapter.recordDesktop
-    property alias recordClearedBefore: adapter.recordClearedBefore
-    property alias idleLockMin: adapter.idleLockMin
-    property alias idleScreenOffMin: adapter.idleScreenOffMin
-    property alias idleSuspendMin: adapter.idleSuspendMin
     property alias weatherCity: adapter.weatherCity
-    property alias musicViz: adapter.musicViz
-    property alias gameMode: adapter.gameMode
-    property alias gamePrevDnd: adapter.gamePrevDnd
-    property alias gamePrevViz: adapter.gamePrevViz
-    property alias gamePrevAwake: adapter.gamePrevAwake
-    property alias nightLightMode: adapter.nightLightMode
-    property alias nightLightTemp: adapter.nightLightTemp
-    property alias nightLightOnMin: adapter.nightLightOnMin
-    property alias nightLightOffMin: adapter.nightLightOffMin
 
     FileView {
         id: file
@@ -71,57 +43,32 @@ Singleton {
             property bool appearanceMigrated: false
             property bool dnd: false
             property bool keepAwake: false
-            property bool time12h: false
             property bool clockSeconds: false
             property bool showGlyphs: false
 
-            property string accentColor: "#ffffff"
-            property string paletteMode: "static"
+            property string accentColor: "#5ea1ff"
 
-            property string wallpaperDir: ""
             property real uiScale: 1.0
-            property bool reduceMotion: false
-            property int manualHue: 30
-            property bool manualDark: true
-            property real manualSat: 0.5
             property string uiFont: ""
             property real pillOpacity: 1.0
-            property bool pillBlur: false
 
             property real topGap: 1.0
 
-            property real appGap: 1.0
-            property int recordCountdown: 5
-            property string recordDir: ""
-            property int recordFps: 60
-            property string recordQuality: "high"
-            property bool recordCursor: true
-            property bool recordMic: true
-            property bool recordDesktop: true
-            property real recordClearedBefore: 0
-            property int idleLockMin: 5
-            property int idleScreenOffMin: 6
-            property int idleSuspendMin: 0
             property string weatherCity: ""
-            property bool musicViz: true
-            property bool gameMode: false
-            property bool gamePrevDnd: false
-            property bool gamePrevViz: true
-            property bool gamePrevAwake: false
-            property string nightLightMode: "off"
-            property int nightLightTemp: 4000
-            property int nightLightOnMin: 1260
-            property int nightLightOffMin: 450
         }
     }
 
     Component.onCompleted: {
-        if (adapter.appearanceVersion >= root.appearanceVersion)
+        if (root.savedAppearanceVersion >= root.appearanceVersion)
             return;
 
-        adapter.pillOpacity = 1.0;
-        adapter.pillBlur = false;
-        adapter.appearanceMigrated = true;
-        adapter.appearanceVersion = root.appearanceVersion;
+        // Preserve opacity and custom accents when upgrading the theme.
+        if (root.accentColor.toLowerCase() === "#ffffff"
+                || root.accentColor.toLowerCase() === "white"
+                || root.accentColor.toLowerCase() === "#b9a1cb"
+                || (root.savedAppearanceVersion === 3 && root.accentColor.toLowerCase() === "#ff71ce"))
+            root.accentColor = "#5ea1ff";
+        root.appearanceMigrated = true;
+        root.savedAppearanceVersion = root.appearanceVersion;
     }
 }

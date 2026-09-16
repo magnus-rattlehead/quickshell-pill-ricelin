@@ -4,6 +4,8 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell.Hyprland
 import "Singletons"
+import "lib/glitch.js" as Glitch
+import "lib/safe.js" as Safe
 
 
 Item {
@@ -49,7 +51,7 @@ Item {
             return ruled;
 
         var out = [];
-        var seen = ({});
+        var seen = Object.create(null);
         var live = Workspacerules.liveByMonitor[screenName];
         if (live) {
             for (var l = 0; l < live.length; l++)
@@ -88,19 +90,6 @@ Item {
 
     readonly property int activeIndex: range.indexOf(parseInt(activeName))
 
-
-    function slotCenterX(idx) {
-        let x = 0;
-        for (let i = 0; i < idx; i++)
-            x += (i === activeIndex ? stickW : dotW) + gap;
-        return x + (idx === activeIndex ? stickW : dotW) / 2;
-    }
-
-    readonly property point activeDotPoint: {
-        void workspaces.activeName;
-        void workspaces.width;
-        return Qt.point(slotCenterX(Math.max(0, activeIndex)), height / 2);
-    }
 
     implicitWidth: row.implicitWidth
     implicitHeight: row.implicitHeight
@@ -146,7 +135,8 @@ Item {
                     anchors.bottomMargin: -8 * workspaces.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch('hl.dsp.focus({workspace="' + slot.wsName + '"})')
+                    onEntered: Glitch.hover(workspaces)
+                    onClicked: { Glitch.click(workspaces); if (Safe.workspaceId(slot.modelData)) Hyprland.dispatch('hl.dsp.focus({workspace="' + Safe.workspaceId(slot.modelData) + '"})'); }
                     onContainsMouseChanged: {
                         if (containsMouse)
                             workspaces.hoverIndex = slot.index;

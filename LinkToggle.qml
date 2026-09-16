@@ -1,5 +1,7 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 Rectangle {
@@ -12,7 +14,7 @@ Rectangle {
 
     width: 28 * s
     height: 16 * s
-    radius: 999
+    radius: 4 * s
     color: on ? Theme.verm : Theme.tileBg
     border.width: focused ? 1 : (on ? 0 : 1)
     border.color: focused ? Qt.alpha(Theme.vermLit, 0.9) : Theme.border
@@ -30,6 +32,8 @@ Rectangle {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: toggle.toggled()
+        hoverEnabled: true
+        onEntered: Glitch.hover(toggle)
+        onClicked: { Glitch.click(toggle); toggle.toggled(); }
     }
 }

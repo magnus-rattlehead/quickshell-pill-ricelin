@@ -49,12 +49,8 @@ Singleton {
     property var preferred: null
 
     property bool ready: false
-    Component.onCompleted: {
-        ready = true;
-        resolveYoutube();
-        resolveTwitch();
-        resolveNetflix();
-    }
+    Component.onCompleted: ready = true
+
 
     onListChanged: {
         if (manualActive && list.indexOf(manualActive) < 0)
@@ -93,7 +89,6 @@ Singleton {
             required property var modelData
             readonly property bool real: modelData && !Players.isProxy(modelData)
             readonly property bool playing: real ? modelData.isPlaying : false
-            readonly property string title: real && modelData.trackTitle ? modelData.trackTitle : ""
 
             onPlayingChanged: {
                 if (!Players.ready)
@@ -101,27 +96,21 @@ Singleton {
                 if (playing) {
                     if (!Players.isIdle(modelData) && !Players.otherPlaying(modelData))
                         Players.preferred = modelData;
-                    Players.announce(modelData);
-                } else if (modelData === Players.active) {
-                    Players.announce(modelData);
                 }
             }
 
-            onTitleChanged: {
-                if (Players.ready && title.length > 0 && (playing || modelData === Players.active))
-                    Players.announce(modelData);
-            }
+
         }
     }
 
     readonly property bool has: active !== null
     readonly property bool playing: has && active.isPlaying
 
-    readonly property string title: has ? refineTitle(active, active.trackTitle || labelOf(active)) : ""
+    readonly property string title: has ? (active.trackTitle || labelOf(active)) : ""
     readonly property string artist: has ? Theme.joinArtists(active.trackArtists, active.trackArtist) : ""
     readonly property string trackUrl: urlOf(active)
     readonly property string artUrl: artUrlFor(active)
-    readonly property real lengthSec: durationFor(active)
+    readonly property real lengthSec: mprisLengthFor(active)
     readonly property bool durationKnown: has && lengthSec > 0 && !live
 
     readonly property bool live: has && liveFor(active)
@@ -135,8 +124,6 @@ Singleton {
     }
     readonly property string trackKey: has ? keyFor(active) : ""
 
-
-    signal announce(var player)
 
     function urlOf(p) {
         return (p && p.metadata) ? (p.metadata["xesam:url"] || "") : "";
@@ -153,35 +140,12 @@ Singleton {
         var len = finiteSeconds(p.length);
         if (!(len > 0) || len > 86400 || p.lengthSupported === false)
             return 0;
-        var pos = finiteSeconds(p.position);
-        if (youtubeId(urlOf(p)).length > 0 && pos > 3 && Math.abs(len - pos) < 1.5)
-            return 0;
         return len;
     }
 
-    function durationFor(p) {
-        if (!p)
-            return 0;
-        var yid = youtubeId(urlOf(p));
-        if (yid.length > 0 && yid === youtubeIdCache) {
-            if (youtubeLive)
-                return 0;
-            if (youtubeLengthSec > 0)
-                return youtubeLengthSec;
-        }
-        return mprisLengthFor(p);
-    }
 
     function liveFor(p) {
-        if (!p)
-            return false;
-        var u = urlOf(p);
-        var yid = youtubeId(u);
-        if (yid.length > 0 && yid === youtubeIdCache && youtubeLive)
-            return true;
-        if (isTwitch(u))
-            return true;
-        return finiteSeconds(p.length) > 86400;
+        return p !== null && finiteSeconds(p.length) > 86400;
     }
 
     function serviceOf(p) {
@@ -224,17 +188,7 @@ Singleton {
     }
 
     function artUrlFor(p) {
-        if (!p)
-            return "";
-        if (p.trackArtUrl)
-            return p.trackArtUrl;
-        var u = urlOf(p);
-        if (p === active && twitchAvatar.length > 0 && isTwitch(u))
-            return twitchAvatar;
-        var nid = netflixIdOf(u);
-        if (nid.length > 0 && nid === netflixId && netflixArt.length > 0)
-            return netflixArt;
-        return derivedThumb(u);
+        return p && p.trackArtUrl ? p.trackArtUrl : "";
     }
 
     function siteName(url) {
@@ -256,162 +210,6 @@ Singleton {
         var s = m[1].toLowerCase();
         var known = { youtube: 1, spotify: 1, twitch: 1, soundcloud: 1, bandcamp: 1 };
         return known[s] ? s : "";
-    }
-
-    function youtubeId(url) {
-        var m = url.match(/^https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:.*&)?v=([\w-]{11})/)
-            || url.match(/^https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/(?:embed|shorts)\/([\w-]{11})/)
-            || url.match(/^https?:\/\/youtu\.be\/([\w-]{11})/);
-        return m ? m[1] : "";
-    }
-
-    function twitchChannelOf(url) {
-        var m = url.match(/^https?:\/\/(?:www\.)?twitch\.tv\/([^\/?#]+)/);
-        if (!m)
-            return "";
-        var ch = m[1].toLowerCase();
-        var reserved = { videos: 1, directory: 1, u: 1, p: 1, settings: 1, subscriptions: 1, following: 1, downloads: 1 };
-        return reserved[ch] ? "" : ch;
-    }
-
-    function isTwitch(url) {
-        return twitchChannelOf(url).length > 0;
-    }
-
-    function derivedThumb(url) {
-        var yid = youtubeId(url);
-        if (yid)
-            return "https://img.youtube.com/vi/" + yid + "/mqdefault.jpg";
-        var ch = twitchChannelOf(url);
-        if (ch)
-            return "https://static-cdn.jtvnw.net/previews-ttv/live_user_" + ch + "-320x180.jpg";
-        return "";
-    }
-
-
-    property string netflixName: ""
-    property string netflixArt: ""
-    property string netflixId: ""
-    property string youtubeIdCache: ""
-    property real youtubeLengthSec: 0
-    property bool youtubeLive: false
-
-    function netflixIdOf(url) {
-        var m = url.match(/^https?:\/\/(?:www\.)?netflix\.com\/(?:watch|title)\/(\d+)/);
-        return m ? m[1] : "";
-    }
-
-    function isoDurationSeconds(v) {
-        var m = String(v).match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
-        if (!m)
-            return 0;
-        return (parseInt(m[1] || "0") * 86400)
-            + (parseInt(m[2] || "0") * 3600)
-            + (parseInt(m[3] || "0") * 60)
-            + parseInt(m[4] || "0");
-    }
-
-    function youtubeDurationFromHtml(t) {
-        var m = t.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
-        if (m)
-            return parseInt(m[1]);
-        m = t.match(/"approxDurationMs"\s*:\s*"(\d+)"/);
-        if (m)
-            return Math.floor(parseInt(m[1]) / 1000);
-        m = t.match(/itemprop="duration"\s+content="([^"]+)"/)
-            || t.match(/"duration"\s*:\s*"([^"]+)"/);
-        return m ? isoDurationSeconds(m[1]) : 0;
-    }
-
-    function resolveYoutube() {
-        var id = youtubeId(trackUrl);
-        if (id === youtubeIdCache)
-            return;
-        youtubeIdCache = id;
-        youtubeLengthSec = 0;
-        youtubeLive = false;
-        if (id.length === 0)
-            return;
-        var xhr = new XMLHttpRequest();
-        xhr.timeout = 8000;
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== XMLHttpRequest.DONE || root.youtubeIdCache !== id || xhr.status !== 200)
-                return;
-            var t = xhr.responseText;
-            var isLive = /"isLiveContent"\s*:\s*true/.test(t) || /"isLiveNow"\s*:\s*true/.test(t);
-            var sec = youtubeDurationFromHtml(t);
-            root.youtubeLive = isLive;
-            if (!isLive && sec > 0 && sec <= 86400)
-                root.youtubeLengthSec = sec;
-        };
-        xhr.open("GET", "https://www.youtube.com/watch?v=" + id);
-        xhr.send();
-    }
-
-    function resolveNetflix() {
-        var id = netflixIdOf(trackUrl);
-        if (id === netflixId)
-            return;
-        netflixId = id;
-        netflixName = "";
-        netflixArt = "";
-        if (id.length === 0)
-            return;
-        var xhr = new XMLHttpRequest();
-        xhr.timeout = 8000;
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200 || root.netflixId !== id)
-                return;
-            var t = xhr.responseText.match(/property="og:title"\s+content="([^"]+)"|og:title"\s+content="([^"]+)"/);
-            var i = xhr.responseText.match(/property="og:image"\s+content="([^"]+)"|og:image"\s+content="([^"]+)"/);
-            var name = t ? (t[1] || t[2] || "") : "";
-            name = name.replace(/^Watch\s+/i, "").replace(/\s*\|\s*Netflix\s*$/i, "");
-            if (name.length > 0)
-                root.netflixName = name;
-            var img = i ? (i[1] || i[2] || "") : "";
-            if (img.indexOf("https:") === 0)
-                root.netflixArt = img;
-        };
-        xhr.open("GET", "https://www.netflix.com/title/" + id);
-        xhr.send();
-    }
-
-
-    function refineTitle(p, raw) {
-        if (p && netflixId.length > 0 && netflixName.length > 0
-            && netflixIdOf(urlOf(p)) === netflixId
-            && (!raw || raw === "Netflix"))
-            return netflixName;
-        return raw;
-    }
-
-
-    property string twitchAvatar: ""
-    property string twitchChannel: ""
-    onTrackUrlChanged: {
-        resolveYoutube();
-        resolveTwitch();
-        resolveNetflix();
-    }
-
-    function resolveTwitch() {
-        var ch = twitchChannelOf(trackUrl);
-        if (ch === twitchChannel)
-            return;
-        twitchChannel = ch;
-        twitchAvatar = "";
-        if (ch.length === 0)
-            return;
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-                var r = xhr.responseText.trim();
-                if (r.indexOf("https:") === 0 && r.length > 12 && root.twitchChannel === ch)
-                    root.twitchAvatar = r;
-            }
-        };
-        xhr.open("GET", "https://decapi.me/twitch/avatar/" + ch);
-        xhr.send();
     }
 
     GlobalShortcut {

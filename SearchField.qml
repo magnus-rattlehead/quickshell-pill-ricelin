@@ -24,6 +24,7 @@ Item {
     height: 30 * s
 
     Text {
+        textFormat: Text.PlainText
         id: glyph
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: parent.left
@@ -81,12 +82,13 @@ Item {
         anchors.top: field.bottom
         anchors.topMargin: 2 * root.s
         height: 1
-        color: Theme.faint
+        color: Theme.cyan
         opacity: field.activeFocus ? 0.7 : 0
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
     }
 
     Text {
+        textFormat: Text.PlainText
         id: counter
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: rightSlot.left

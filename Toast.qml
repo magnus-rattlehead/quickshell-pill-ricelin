@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
 import "Singletons"
+import "lib/glitch.js" as Glitch
 
 
 Item {
@@ -30,19 +31,21 @@ Item {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
+        hoverEnabled: true
+        onEntered: Glitch.hover(root)
+        onClicked: { Glitch.click(root);
             Notifs.activateNotif(root.notif);
             Notifs.removePopup(root.notif);
         }
     }
 
-    Rectangle {
+    RecessedTile {
         id: iconTile
         anchors.left: parent.left
         anchors.top: parent.top
         width: 28 * root.s
         height: 28 * root.s
-        radius: 9 * root.s
+        radius: 4 * root.s
         color: Theme.tileBg
         border.width: 1
         border.color: Theme.border
@@ -64,13 +67,14 @@ Item {
             visible: !toastImg.visible
             width: 7 * root.s
             height: 7 * root.s
-            radius: 2 * root.s
+            radius: 1 * root.s
             rotation: 45
             color: root.critical ? Theme.vermLit : Theme.verm
         }
     }
 
     Text {
+        textFormat: Text.PlainText
         id: dismiss
         anchors.right: parent.right
         anchors.top: parent.top
@@ -89,7 +93,8 @@ Item {
             anchors.margins: -6 * root.s
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Notifs.removePopup(root.notif)
+            onEntered: Glitch.hover(root)
+            onClicked: { Glitch.click(root); Notifs.removePopup(root.notif); }
         }
     }
 
@@ -103,6 +108,7 @@ Item {
         spacing: 3 * root.s
 
         Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: (root.notif.appName && root.notif.appName.length) ? root.notif.appName : "System"
             color: Theme.dim
@@ -128,7 +134,7 @@ Item {
                     anchors.centerIn: parent
                     width: 8 * root.s
                     height: 8 * root.s
-                    radius: 999
+                    radius: 3 * root.s
                     color: Theme.flameGlow
                     opacity: 0.3
                 }
@@ -136,12 +142,13 @@ Item {
                     anchors.centerIn: parent
                     width: 4 * root.s
                     height: 4 * root.s
-                    radius: 999
+                    radius: 3 * root.s
                     color: Theme.flameGlow
                 }
             }
 
             Text {
+                textFormat: Text.PlainText
                 width: parent.width - (root.critical ? 13 * root.s : 0)
                 text: root.notif.summary
                 color: Theme.cream
@@ -174,19 +181,16 @@ Item {
             Repeater {
                 model: root.acts
 
-                Rectangle {
+                ButtonSurface {
                     id: actPill
                     required property var modelData
                     required property int index
 
                     height: 20 * root.s
                     width: actText.implicitWidth + 18 * root.s
-                    radius: 999
-                    color: Theme.tileBg
-                    border.width: 1
-                    border.color: Theme.border
-
+                    radius: 3 * root.s
                     Text {
+                        textFormat: Text.PlainText
                         id: actText
                         anchors.centerIn: parent
                         text: actPill.modelData.text
@@ -199,7 +203,9 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
+                        hoverEnabled: true
+                        onEntered: Glitch.hover(root)
+                        onClicked: { Glitch.click(root);
                             actPill.modelData.invoke();
                             if (actPill.modelData.identifier === "default")
                                 Notifs.raiseWindow(root.notif);

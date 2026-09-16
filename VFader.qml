@@ -47,7 +47,7 @@ Item {
         Rectangle {
             id: thread
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 2 * root.s
+            width: 3 * root.s
             height: parent.height
             radius: width / 2
             color: Theme.threadBg
@@ -60,23 +60,24 @@ Item {
                 height: parent.height * Math.max(0, Math.min(1, root.value))
                 radius: parent.radius
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: root.lit ? Theme.vermLit : Theme.vermDim }
+                    GradientStop { position: 0.0; color: root.lit ? Theme.cyan : Theme.vermLit }
                     GradientStop { position: 1.0; color: root.lit ? Theme.vermBurn : Theme.vermDimDeep }
                 }
                 Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
             }
         }
 
-        Rectangle {
+        RecessedTile {
             id: tick
+            depressed: dragArea.pressed
             anchors.horizontalCenter: parent.horizontalCenter
             y: Math.max(0, Math.min(root.trackH - height,
                 (1 - Math.max(0, Math.min(1, root.value))) * root.trackH - height / 2))
             width: 11 * root.s
-            height: 2.5 * root.s
-            radius: 2 * root.s
-            color: Theme.tickRest
-            opacity: root.focused ? 0 : 1
+            height: 5 * root.s
+            radius: 1 * root.s
+            color: root.lit ? Theme.cyan : Theme.tickRest
+            opacity: 1
             Behavior on opacity { NumberAnimation { duration: Motion.fast } }
             Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
         }
@@ -97,6 +98,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         id: readout
         anchors.top: trackArea.bottom
         anchors.topMargin: 7 * root.s
@@ -131,6 +133,7 @@ Item {
     }
 
     Text {
+        textFormat: Text.PlainText
         visible: root.subLabel.length > 0
         opacity: root.subPersistent || root.lit ? 1 : 0
         anchors.top: iconBox.bottom

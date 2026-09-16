@@ -146,36 +146,11 @@ ShellRoot {
                 clipboard: true, link: true, media: true, sysmon: true,
                 system: true
             };
-            if (allowed[name])
+            if (Object.prototype.hasOwnProperty.call(allowed, name))
                 root.toggleSurface(mon, name === "system" ? "sysmon" : name);
         }
     }
 
-    Variants {
-        model: Quickshell.screens
-
-        PanelWindow {
-            id: reserve
-            required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
-            readonly property real topGap: 8 * Flags.topGap * s
-            readonly property real restHeight: 38 * s
-            readonly property real reservedH: 0
-
-            screen: modelData
-            visible: false
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            exclusiveZone: 0
-            aboveWindows: false
-
-            anchors { top: true; left: true; right: true }
-            implicitHeight: 1
-
-            mask: emptyReserve
-            Region { id: emptyReserve }
-        }
-    }
 
     Variants {
         model: Quickshell.screens

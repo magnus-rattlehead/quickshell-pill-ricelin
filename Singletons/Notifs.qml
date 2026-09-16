@@ -1,20 +1,22 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
+import "../lib/safe.js" as Safe
 import Quickshell.Services.Notifications
 
 Singleton {
     id: root
 
-    property var seenIds: ({})
-    property var arrivalMs: ({})
+    property var seenIds: Object.create(null)
+    property var arrivalMs: Object.create(null)
     property var popups: []
     property int tick: 0
-    property var expandedApps: ({})
+    property var expandedApps: Object.create(null)
     property var history: []
-    property var userDismissed: ({})
-    property var expireAt: ({})
-    property var hookedIds: ({})
+    property var userDismissed: Object.create(null)
+    property var expireAt: Object.create(null)
+    property var hookedIds: Object.create(null)
 
     readonly property var tracked: server.trackedNotifications.values
     readonly property int count: tracked.length + history.length
@@ -29,7 +31,7 @@ Singleton {
     }
 
     readonly property var groups: {
-        var map = {};
+        var map = Object.create(null);
         var order = [];
         for (var i = 0; i < tracked.length; i++) {
             var n = tracked[i];
@@ -95,8 +97,8 @@ Singleton {
 
     function dismissEntry(e) {
         if (!e || !e.items) return;
-        var d = Object.assign({}, userDismissed);
-        var gone = {};
+        var d = Object.assign(Object.create(null), userDismissed);
+        var gone = Object.create(null);
         var live = [];
         for (var i = 0; i < e.items.length; i++) {
             var n = e.items[i];
@@ -114,12 +116,30 @@ Singleton {
 
 
     function raiseWindow(n) {
-        if (!n) return;
-        var token = String(n.desktopEntry && n.desktopEntry.length ? n.desktopEntry : (n.appName || "")).toLowerCase();
-        if (token.length === 0) return;
-        Quickshell.execDetached(["sh", "-c",
-            "addr=$(hyprctl clients -j | jq -r --arg q \"$1\" 'first(.[] | select(((.class | if . then ascii_downcase else \"\" end) | contains($q)) or ((.initialClass | if . then ascii_downcase else \"\" end) | contains($q))) | .address)'); [ -n \"$addr\" ] && hyprctl dispatch \"hl.dsp.focus({ window = \\\"address:$addr\\\" })\"",
-            "sh", token]);
+        if (!n || focusProc.running) return;
+        var token = String(n.desktopEntry || n.appName || "").toLowerCase();
+        if (!token.length) return;
+        focusProc.token = token;
+        focusProc.running = true;
+    }
+
+    Process {
+        id: focusProc
+        property string token: ""
+        command: ["hyprctl", "clients", "-j"]
+        stdout: StdioCollector { id: clientsOutput }
+        onExited: (code) => {
+            if (code !== 0) return;
+            try {
+                var clients = JSON.parse(clientsOutput.text);
+                if (!Array.isArray(clients)) return;
+                var match = clients.find(c => c && [c.class, c.initialClass].some(
+                    name => typeof name === "string" && name.toLowerCase().indexOf(token) !== -1));
+                var address = match ? Safe.windowAddress(match.address) : "";
+                if (address) Quickshell.execDetached(["hyprctl", "dispatch",
+                    "hl.dsp.focus({ window = " + Safe.luaQuote("address:" + address) + " })"]);
+            } catch (_) {}
+        }
     }
 
 
@@ -146,7 +166,7 @@ Singleton {
         var doomed = tracked.filter(function(n) {
             return ((n.appName && n.appName.length) ? n.appName : "System") === app;
         });
-        var d = Object.assign({}, userDismissed);
+        var d = Object.assign(Object.create(null), userDismissed);
         for (var i = 0; i < doomed.length; i++) d[doomed[i].id] = true;
         root.userDismissed = d;
         for (var j = 0; j < doomed.length; j++) doomed[j].dismiss();
@@ -154,7 +174,7 @@ Singleton {
     }
 
     function markAllSeen() {
-        var m = {};
+        var m = Object.create(null);
         for (var i = 0; i < tracked.length; i++) m[tracked[i].id] = true;
         for (var j = 0; j < history.length; j++) m[history[j].id] = true;
         root.seenIds = m;
@@ -162,7 +182,7 @@ Singleton {
 
     function clearAll() {
         var l = tracked.slice();
-        var d = Object.assign({}, userDismissed);
+        var d = Object.assign(Object.create(null), userDismissed);
         for (var i = 0; i < l.length; i++) d[l[i].id] = true;
         root.userDismissed = d;
         for (var j = 0; j < l.length; j++) l[j].dismiss();
@@ -172,14 +192,14 @@ Singleton {
 
     function markEntrySeen(e) {
         if (!e || !e.items) return;
-        var m = Object.assign({}, seenIds);
+        var m = Object.assign(Object.create(null), seenIds);
         for (var i = 0; i < e.items.length; i++)
             m[e.items[i].id] = true;
         root.seenIds = m;
     }
 
     function markAppSeen(app) {
-        var m = Object.assign({}, seenIds);
+        var m = Object.assign(Object.create(null), seenIds);
         for (var i = 0; i < tracked.length; i++) {
             var n = tracked[i];
             if (((n.appName && n.appName.length) ? n.appName : "System") === app)
@@ -196,7 +216,7 @@ Singleton {
     }
 
     function toggleExpanded(app) {
-        var e = Object.assign({}, expandedApps);
+        var e = Object.assign(Object.create(null), expandedApps);
         e[app] = e[app] !== true;
         root.expandedApps = e;
     }
@@ -205,14 +225,14 @@ Singleton {
     function hookClosed(n) {
         if (root.hookedIds[n.id])
             return;
-        var hooked = Object.assign({}, root.hookedIds);
+        var hooked = Object.assign(Object.create(null), root.hookedIds);
         hooked[n.id] = true;
         root.hookedIds = hooked;
         n.closed.connect(function(reason) {
             if (!root.userDismissed[n.id]) {
                 var hid = "h" + n.id + "-" + Date.now();
                 if (root.seenIds[n.id]) {
-                    var seen = Object.assign({}, root.seenIds);
+                    var seen = Object.assign(Object.create(null), root.seenIds);
                     seen[hid] = true;
                     root.seenIds = seen;
                 }
@@ -228,18 +248,18 @@ Singleton {
                     id: hid
                 }].concat(root.history).slice(0, 50);
             } else {
-                var du = Object.assign({}, root.userDismissed);
+                var du = Object.assign(Object.create(null), root.userDismissed);
                 delete du[n.id];
                 root.userDismissed = du;
             }
             root.removePopup(n);
-            var b = Object.assign({}, root.arrivalMs);
+            var b = Object.assign(Object.create(null), root.arrivalMs);
             delete b[n.id];
             root.arrivalMs = b;
-            var c = Object.assign({}, root.expireAt);
+            var c = Object.assign(Object.create(null), root.expireAt);
             delete c[n.id];
             root.expireAt = c;
-            var h = Object.assign({}, root.hookedIds);
+            var h = Object.assign(Object.create(null), root.hookedIds);
             delete h[n.id];
             root.hookedIds = h;
         });
@@ -271,7 +291,7 @@ Singleton {
 
         Component.onCompleted: {
             var l = trackedNotifications.values;
-            var a = Object.assign({}, root.arrivalMs);
+            var a = Object.assign(Object.create(null), root.arrivalMs);
             for (var i = 0; i < l.length; i++) {
                 if (!a[l[i].id]) a[l[i].id] = Date.now();
                 root.hookClosed(l[i]);
@@ -280,10 +300,10 @@ Singleton {
         }
 
         onNotification: function(n) {
-            var a = Object.assign({}, root.arrivalMs);
+            var a = Object.assign(Object.create(null), root.arrivalMs);
             a[n.id] = Date.now();
             root.arrivalMs = a;
-            var e = Object.assign({}, root.expireAt);
+            var e = Object.assign(Object.create(null), root.expireAt);
             e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 4000 : 6000);
             root.expireAt = e;
             n.tracked = true;

@@ -39,17 +39,6 @@ PillSurface {
 
     onActiveChanged: Sysmon.open = active
 
-    readonly property point soulPoint: {
-        void root.width;
-        void root.height;
-        if (Flags.showGlyphs)
-            return kanji.mapToItem(root, kanji.width / 2, -3 * root.s);
-        return sysLabel.mapToItem(root, -8 * root.s, sysLabel.height / 2);
-    }
-
-    ameForm: open ? "soul" : "off"
-    amePoint: soulPoint
-
     function gpuTemp(g) {
         if (!g)
             return "";
@@ -83,7 +72,7 @@ PillSurface {
         onArcChanged: display = arc
         Component.onCompleted: display = arc
         onDisplayChanged: face.requestPaint()
-        Behavior on display { NumberAnimation { duration: Math.round(700 * Motion.mult); easing.type: Easing.OutCubic } }
+        Behavior on display { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
 
         width: 110 * root.s
         height: 110 * root.s
@@ -130,6 +119,7 @@ PillSurface {
             spacing: 1 * root.s
 
             Text {
+                textFormat: Text.PlainText
                 id: bigText
                 text: dial.big
                 color: Theme.cream
@@ -140,6 +130,7 @@ PillSurface {
                 font.features: { "tnum": 1 }
             }
             Text {
+                textFormat: Text.PlainText
                 anchors.baseline: bigText.baseline
                 visible: dial.unit.length > 0
                 text: dial.unit
@@ -157,6 +148,7 @@ PillSurface {
             spacing: 2 * root.s
 
             Text {
+                textFormat: Text.PlainText
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: dial.label
                 color: Theme.faint
@@ -168,6 +160,7 @@ PillSurface {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: dial.sub
                 color: Theme.subtle
@@ -178,6 +171,7 @@ PillSurface {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: dial.sub2.length > 0
                 text: dial.sub2
@@ -207,6 +201,7 @@ PillSurface {
                 spacing: 9 * root.s
 
                 Text {
+                    textFormat: Text.PlainText
                     id: kanji
                     anchors.verticalCenter: parent.verticalCenter
                     visible: Flags.showGlyphs
@@ -217,6 +212,7 @@ PillSurface {
                     font.pixelSize: 16 * root.s
                 }
                 Text {
+                    textFormat: Text.PlainText
                     id: sysLabel
                     anchors.verticalCenter: parent.verticalCenter
                     text: "SYSTEM"
@@ -230,6 +226,7 @@ PillSurface {
             }
 
             Text {
+                textFormat: Text.PlainText
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: Sysmon.uptime
@@ -322,6 +319,7 @@ PillSurface {
                         spacing: 6 * root.s
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: cell.kind === "net" ? "Net · MB/s"
                                 : cell.kind === "disk" ? "Disk · %"
@@ -340,6 +338,7 @@ PillSurface {
                             visible: cell.kind === "net"
 
                             Text {
+                                textFormat: Text.PlainText
                                 text: "↓" + Sysmon.netDown.toFixed(1)
                                 color: Theme.cream
                                 font.family: Theme.font
@@ -348,6 +347,7 @@ PillSurface {
                                 font.features: { "tnum": 1 }
                             }
                             Text {
+                                textFormat: Text.PlainText
                                 text: "↑" + Sysmon.netUp.toFixed(1)
                                 color: Theme.vermLit
                                 font.family: Theme.font
@@ -358,6 +358,7 @@ PillSurface {
                         }
 
                         Text {
+                            textFormat: Text.PlainText
                             anchors.horizontalCenter: parent.horizontalCenter
                             visible: cell.kind !== "net"
                             text: cell.kind === "disk" ? "" + Sysmon.diskPct
