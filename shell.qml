@@ -1,4 +1,5 @@
 //@ pragma UseQApplication
+pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
@@ -12,27 +13,6 @@ ShellRoot {
 
     property string openMon: ""
     property string openSurface: ""
-    property string peekMon: ""
-    property string edgeHoverMon: ""
-
-    function refresh() {
-        Hyprland.refreshWorkspaces();
-        Hyprland.refreshMonitors();
-        Hyprland.refreshToplevels();
-    }
-
-    Component.onCompleted: {
-        refresh();
-        Weather.refresh();
-        startupRefresh.restart();
-    }
-
-    Timer {
-        id: startupRefresh
-        interval: 150
-        repeat: false
-        onTriggered: root.refresh()
-    }
 
     PanelWindow {
         id: inhibitWin
@@ -49,29 +29,18 @@ ShellRoot {
     }
 
     Process {
-        running: Flags.keepAwake
-        command: ["systemd-inhibit", "--what=idle:sleep", "--who=Quickshell pill",
-                  "--why=keep awake", "--mode=block", "sleep", "infinity"]
+        running: Flags.keepAwake && Config.inhibitCommand.length > 0
+        command: Config.inhibitCommand
     }
-
-    readonly property var refreshEvents: ({
-        workspace: true, workspacev2: true,
-        createworkspace: true, createworkspacev2: true,
-        destroyworkspace: true, destroyworkspacev2: true,
-        moveworkspace: true, moveworkspacev2: true,
-        renameworkspace: true, activespecial: true,
-        focusedmon: true, focusedmonv2: true,
-        openwindow: true, closewindow: true,
-        movewindow: true, movewindowv2: true,
-        fullscreen: true,
-        monitoradded: true, monitoraddedv2: true, monitorremoved: true
-    })
 
     Connections {
         target: Hyprland
         function onRawEvent(event) {
-            if (root.refreshEvents[event.name])
-                root.refresh();
+            // Native events handle normal updates; moves can leave derived state stale.
+            if (event.name === "movewindowv2" || event.name === "moveworkspacev2")
+                Hyprland.refreshWorkspaces();
+            if (event.name === "moveworkspacev2")
+                Hyprland.refreshMonitors();
         }
     }
 
@@ -79,18 +48,6 @@ ShellRoot {
         if (!mon || mon.length === 0)
             mon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
         return mon;
-    }
-
-    function monitorFullscreen(mon) {
-        var mons = Hyprland.monitors.values;
-        for (var i = 0; i < mons.length; i++) {
-            if (mons[i].name === mon) {
-                var ws = mons[i].activeWorkspace;
-                var o = ws ? ws.lastIpcObject : null;
-                return o ? !!o.hasfullscreen : false;
-            }
-        }
-        return false;
     }
 
     function toggleSurface(mon, surface) {
@@ -110,19 +67,25 @@ ShellRoot {
 
     function hideAll() {
         root.close();
-        root.peekMon = "";
-        root.edgeHoverMon = "";
+        for (var monitor of monitors.instances) monitor.hide();
     }
 
     function peek(mon) {
         mon = root.monitorName(mon);
-        if ((root.openMon === mon && root.openSurface.length > 0) || root.peekMon === mon) {
+        var monitor = monitors.instances.find(m => m.modelData.name === mon);
+        if (!monitor) return;
+        if ((root.openMon === mon && root.openSurface.length > 0) || monitor.pinned) {
             root.hideAll();
-            return;
+        } else {
+            root.close();
+            monitor.pinned = true;
         }
-        root.close();
-        root.peekMon = mon;
     }
+
+    GlobalShortcut { appid: "quickshell"; name: "pillPeek"; onPressed: root.peek("") }
+    GlobalShortcut { appid: "quickshell"; name: "pillLauncher"; onPressed: root.toggleSurface("", "launcher") }
+    GlobalShortcut { appid: "quickshell"; name: "pillClipboard"; onPressed: root.toggleSurface("", "clipboard") }
+    GlobalShortcut { appid: "quickshell"; name: "pillPower"; onPressed: root.toggleSurface("", "power") }
 
     IpcHandler {
         target: "pill"
@@ -132,6 +95,7 @@ ShellRoot {
         function clipboard(mon: string): void { root.toggleSurface(mon, "clipboard"); }
         function power(mon: string): void { root.toggleSurface(mon, "power"); }
         function link(mon: string): void { root.toggleSurface(mon, "link"); }
+        function notifications(mon: string): void { root.toggleSurface(mon, "notifications"); }
         function media(mon: string): void {
             if (Players.list.length > 0)
                 root.toggleSurface(mon, "media");
@@ -141,285 +105,196 @@ ShellRoot {
         function peek(mon: string): void { root.peek(mon); }
         function hide(): void { root.hideAll(); }
         function page(mon: string, name: string): void {
-            var allowed = {
-                mixer: true, calendar: true, launcher: true, power: true,
-                clipboard: true, link: true, media: true, sysmon: true,
-                system: true
-            };
-            if (Object.prototype.hasOwnProperty.call(allowed, name))
-                root.toggleSurface(mon, name === "system" ? "sysmon" : name);
-        }
-    }
-
-
-    Variants {
-        model: Quickshell.screens
-
-        PanelWindow {
-            id: edgeTrigger
-            required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
-            readonly property bool monFullscreen: root.monitorFullscreen(modelData.name)
-
-            screen: modelData
-            visible: !monFullscreen && root.openSurface.length === 0
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            exclusiveZone: 0
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.namespace: "pill-edge-trigger"
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-            anchors { top: true; left: true; right: true }
-            implicitHeight: Math.max(4, 4 * s)
-
-            mask: edgeRegion
-            Region {
-                id: edgeRegion
-                readonly property real triggerW: Math.min(edgeTrigger.width, Math.max(240 * edgeTrigger.s, 320 * edgeTrigger.s))
-                x: (edgeTrigger.width - triggerW) / 2
-                y: 0
-                width: triggerW
-                height: edgeTrigger.height
-            }
-
-            onMonFullscreenChanged: if (monFullscreen && root.edgeHoverMon === modelData.name)
-                root.edgeHoverMon = "";
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
-                onEntered: {
-                    clearEdgeHover.stop();
-                    root.edgeHoverMon = edgeTrigger.modelData.name;
-                }
-                onExited: clearEdgeHover.restart()
-            }
-
-            Timer {
-                id: clearEdgeHover
-                interval: 260
-                onTriggered: if (root.edgeHoverMon === edgeTrigger.modelData.name)
-                    root.edgeHoverMon = "";
-            }
+            if (name === "system") name = "sysmon";
+            if (Object.prototype.hasOwnProperty.call(Config.pages, name))
+                root.toggleSurface(mon, name);
         }
     }
 
     Variants {
+        id: monitors
         model: Quickshell.screens
 
-        PanelWindow {
-            id: overlay
+        Scope {
+            id: monitor
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
-            readonly property real topGap: 8 * Flags.topGap * s
+            readonly property real s: Config.baseScale * Math.max(0.5, Flags.uiScale)
+            readonly property var hyprMonitor: Hyprland.monitors.values.length > 0 ? Hyprland.monitorFor(modelData) : null
+            readonly property bool fullscreen: hyprMonitor?.activeWorkspace?.hasFullscreen ?? false
+
+            property bool pinned: false
+            property bool hovered: false
             readonly property string surface: root.openMon === modelData.name ? root.openSurface : ""
             readonly property bool surfaceOpen: surface.length > 0
-            readonly property bool toggledOpen: root.peekMon === modelData.name
-            readonly property bool edgeHovered: root.edgeHoverMon === modelData.name
-            readonly property bool userVisible: surfaceOpen || toggledOpen || edgeHovered || pill.hoverLatch
-            readonly property bool shellShown: surfaceOpen || toggledOpen || edgeHovered || pill.hoverLatch || pill.toastActive
-            readonly property bool modal: surfaceOpen || toggledOpen
+            readonly property bool userVisible: surfaceOpen || pinned || hovered
+            readonly property bool shellShown: userVisible || pill.toastActive
+            readonly property bool modal: surfaceOpen || pinned
 
-            readonly property bool monFullscreen: root.monitorFullscreen(modelData.name)
-            readonly property bool edgeHoverable: !monFullscreen && !modal && root.openSurface.length === 0
-
-            onMonFullscreenChanged: if (monFullscreen) {
-                if (root.openMon === modelData.name) root.close();
-                if (root.peekMon === modelData.name) root.peekMon = "";
-                if (root.edgeHoverMon === modelData.name) root.edgeHoverMon = "";
-                pill.pinned = false;
-            }
-
-            screen: modelData
-            color: "transparent"
-            exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: userVisible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
-            WlrLayershell.namespace: "pill"
-
-            anchors { top: true; left: true; right: true; bottom: true }
-
-            mask: monFullscreen ? hiddenRegion : (modal ? fullRegion : (shellShown ? overlayRevealRegion : overlayEdgeRegion))
-            Region { id: hiddenRegion }
-            Region {
-                id: overlayEdgeRegion
-                readonly property real triggerW: Math.min(overlay.width, Math.max(320 * overlay.s, pill.targetW))
-                x: (overlay.width - triggerW) / 2
-                y: 0
-                width: triggerW
-                height: Math.max(8, 8 * overlay.s)
-            }
-            Region {
-                id: overlayRevealRegion
-                readonly property real baseW: Math.max(pill.width, pill.targetW)
-                readonly property real triggerW: Math.min(overlay.width, Math.max(baseW, 320 * overlay.s))
-                x: (overlay.width - triggerW) / 2
-                y: 0
-                width: triggerW
-                height: Math.max(pill.y + Math.max(pill.height, pill.targetH), overlayEdgeRegion.height)
-            }
-            Region {
-                id: pillRegion
-                readonly property real baseW: Math.max(pill.width, pill.targetW)
-                x: pill.x + (pill.width - baseW) / 2
-                y: pill.y
-                width: baseW
-                height: Math.max(pill.height, pill.targetH)
-            }
-            Region {
-                id: fullRegion
-                width: overlay.width
-                height: overlay.height
-            }
-
-            MouseArea {
-                id: edgeHoverArea
-                x: overlayRevealRegion.x
-                y: overlayRevealRegion.y
-                width: overlayRevealRegion.width
-                height: overlayRevealRegion.height
-                enabled: overlay.edgeHoverable
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
-                onEntered: {
-                    clearOverlayEdgeHover.stop();
-                    root.edgeHoverMon = overlay.modelData.name;
-                }
-                onExited: clearOverlayEdgeHover.restart()
-            }
-
+            function enter() { clearHover.stop(); hovered = true; }
+            function hide() { clearHover.stop(); pinned = false; hovered = false; }
             Timer {
-                id: clearOverlayEdgeHover
+                id: clearHover
                 interval: 260
-                onTriggered: if (root.edgeHoverMon === overlay.modelData.name)
-                    root.edgeHoverMon = "";
+                onTriggered: monitor.hovered = !monitor.fullscreen && (pillHover.hovered || edgeHoverArea.containsMouse || triggerHover.containsMouse)
             }
-
-            MouseArea {
-                anchors.fill: parent
-                enabled: overlay.modal
-                acceptedButtons: Qt.AllButtons
-                onPressed: (mouse) => {
-                    if (overlay.surfaceOpen) {
-                        var inside = mouse.x >= pillRegion.x && mouse.x <= pillRegion.x + pillRegion.width
-                            && mouse.y >= pillRegion.y && mouse.y <= pillRegion.y + pillRegion.height;
-                        if (!inside)
-                            root.close();
-                        else if (mouse.y <= pillRegion.y + 40 * pill.s)
-                            pill.surfaceBack();
-                    } else {
-                        pill.pinned = false;
-                        root.peekMon = "";
-                    }
-                }
+            onSurfaceOpenChanged: if (surfaceOpen) {
+                pinned = false;
+                Notifs.popup = null;
+                focusScope.forceActiveFocus();
             }
-
-            FocusScope {
-                id: focusScope
-                anchors.fill: parent
-                focus: overlay.userVisible
-
-                Keys.onPressed: (e) => {
-                    if (e.key === Qt.Key_Escape || e.key === Qt.Key_Backspace) {
-                        if (pill.surfaceOpen) {
-                            if (!pill.linkBack())
-                                root.close();
-                        } else {
-                            root.hideAll();
-                            pill.resetKeyboardState();
-                        }
-                        e.accepted = true;
-                        return;
-                    }
-
-                    if (!pill.surfaceOpen) {
-                        if (e.key === Qt.Key_Space) {
-                            pill.toggleKeyboardExpanded();
-                            e.accepted = true;
-                        } else if (pill.expanded
-                            && (e.key === Qt.Key_H || e.key === Qt.Key_K
-                                || e.key === Qt.Key_Left || e.key === Qt.Key_Up)) {
-                            e.accepted = pill.moveTopNav(-1);
-                        } else if (pill.expanded
-                            && (e.key === Qt.Key_L || e.key === Qt.Key_J
-                                || e.key === Qt.Key_Right || e.key === Qt.Key_Down)) {
-                            e.accepted = pill.moveTopNav(1);
-                        } else if (pill.expanded
-                            && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
-                            e.accepted = pill.activateTopNav();
-                        }
-                        return;
-                    }
-
-                    if (pill.linkOpen) {
-                        e.accepted = pill.linkKeyPress(e.key, e.isAutoRepeat);
-                        return;
-                    }
-
-                    if (pill.mixerOpen) {
-                        if (e.key === Qt.Key_H || e.key === Qt.Key_Left) {
-                            pill.mixerFocusMove(-1);
-                            e.accepted = true;
-                        } else if (e.key === Qt.Key_L || e.key === Qt.Key_Right) {
-                            pill.mixerFocusMove(1);
-                            e.accepted = true;
-                        } else if (e.key === Qt.Key_K || e.key === Qt.Key_Up) {
-                            e.accepted = pill.mixerStep(1);
-                        } else if (e.key === Qt.Key_J || e.key === Qt.Key_Down) {
-                            e.accepted = pill.mixerStep(-1);
-                        }
-                        return;
-                    }
-
-                    if (pill.powerOpen) {
-                        if (e.key === Qt.Key_H || e.key === Qt.Key_K
-                            || e.key === Qt.Key_Left || e.key === Qt.Key_Up) {
-                            pill.powerMove(-1);
-                            e.accepted = true;
-                        } else if (e.key === Qt.Key_L || e.key === Qt.Key_J
-                            || e.key === Qt.Key_Right || e.key === Qt.Key_Down) {
-                            pill.powerMove(1);
-                            e.accepted = true;
-                        } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) {
-                            if (!e.isAutoRepeat) pill.powerPress();
-                            e.accepted = true;
-                        }
-                        return;
-                    }
-                }
-                Pill {
-                    id: pill
-                    anchors.top: parent.top
-                    anchors.topMargin: overlay.topGap
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    s: overlay.s
-                    screenName: overlay.modelData.name
-                    barWindow: overlay
-                    surface: overlay.surface
-                    forcePinned: false
-
-                    HoverHandler {
-                        enabled: overlay.shellShown
-                        onHoveredChanged: pill.hovered = hovered
-                    }
-
-                    opacity: (overlay.monFullscreen || !overlay.shellShown) ? 0 : 1
-                    Behavior on opacity { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
-                    transform: Translate {
-                        y: (overlay.monFullscreen || !overlay.shellShown) ? -(pill.height + overlay.topGap) : 0
-                        Behavior on y { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
-                    }
-
-                    onRequestSurface: (name) => root.toggleSurface(overlay.modelData.name, name)
-                    onRequestClose: root.close()
-                    onRequestHide: root.hideAll()
-                }
-            }
-
-            onSurfaceOpenChanged: if (surfaceOpen) focusScope.forceActiveFocus()
             onUserVisibleChanged: if (userVisible) focusScope.forceActiveFocus()
+            onFullscreenChanged: if (fullscreen) {
+                if (root.openMon === modelData.name) root.close();
+                hide();
+            }
+
+            PanelWindow {
+                id: edgeTrigger
+                screen: monitor.modelData
+                visible: !monitor.fullscreen && root.openSurface.length === 0
+                color: "transparent"
+                exclusionMode: ExclusionMode.Ignore
+                exclusiveZone: 0
+                WlrLayershell.layer: WlrLayer.Overlay
+                WlrLayershell.namespace: "pill-edge-trigger"
+                WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+                anchors { top: true; left: true; right: true }
+                implicitHeight: Math.max(4, 4 * monitor.s)
+
+                mask: edgeRegion
+                Region {
+                    id: edgeRegion
+                    readonly property real triggerW: Math.min(edgeTrigger.width, 320 * monitor.s)
+                    x: (edgeTrigger.width - triggerW) / 2
+                    y: 0
+                    width: triggerW
+                    height: edgeTrigger.height
+                }
+
+                MouseArea {
+                    id: triggerHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onEntered: monitor.enter()
+                    onExited: clearHover.restart()
+                }
+            }
+
+            PanelWindow {
+                id: overlay
+                readonly property real topGap: 8 * Flags.topGap * monitor.s
+                readonly property bool edgeHoverable: !monitor.fullscreen && !monitor.modal && root.openSurface.length === 0
+
+                screen: monitor.modelData
+                color: "transparent"
+                exclusionMode: ExclusionMode.Ignore
+                WlrLayershell.layer: WlrLayer.Overlay
+                WlrLayershell.keyboardFocus: monitor.userVisible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
+                WlrLayershell.namespace: "pill"
+
+                anchors { top: true; left: true; right: true; bottom: true }
+
+                mask: monitor.fullscreen ? hiddenRegion : (monitor.modal ? fullRegion : (monitor.shellShown ? overlayRevealRegion : overlayEdgeRegion))
+                Region { id: hiddenRegion }
+                Region {
+                    id: overlayEdgeRegion
+                    readonly property real triggerW: Math.min(overlay.width, Math.max(320 * monitor.s, pill.targetW))
+                    x: (overlay.width - triggerW) / 2
+                    y: 0
+                    width: triggerW
+                    height: Math.max(8, 8 * monitor.s)
+                }
+                Region {
+                    id: overlayRevealRegion
+                    readonly property real baseW: Math.max(pill.width, pill.targetW)
+                    readonly property real triggerW: Math.min(overlay.width, Math.max(baseW, 320 * monitor.s))
+                    x: (overlay.width - triggerW) / 2
+                    y: 0
+                    width: triggerW
+                    height: Math.max(pill.y + Math.max(pill.height, pill.targetH), overlayEdgeRegion.height)
+                }
+                Region {
+                    id: fullRegion
+                    width: overlay.width
+                    height: overlay.height
+                }
+
+                MouseArea {
+                    id: edgeHoverArea
+                    x: overlayRevealRegion.x
+                    y: overlayRevealRegion.y
+                    width: overlayRevealRegion.width
+                    height: overlayRevealRegion.height
+                    enabled: overlay.edgeHoverable
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    onEntered: monitor.enter()
+                    onExited: clearHover.restart()
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: monitor.modal
+                    acceptedButtons: Qt.AllButtons
+                    onPressed: {
+                        if (monitor.surfaceOpen) {
+                            root.close();
+                        } else {
+                            monitor.pinned = false;
+                        }
+                    }
+                }
+
+                FocusScope {
+                    id: focusScope
+                    anchors.fill: parent
+                    focus: monitor.userVisible
+
+                    Keys.onPressed: (e) => {
+                        if (e.key === Qt.Key_Escape) {
+                            if (pill.surfaceOpen) {
+                                if (!pill.linkBack())
+                                    root.close();
+                            } else {
+                                root.hideAll();
+                            }
+                            e.accepted = true;
+                            return;
+                        }
+                    }
+                    Pill {
+                        id: pill
+                        anchors.top: parent.top
+                        anchors.topMargin: overlay.topGap
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        s: monitor.s
+                        hyprMonitor: monitor.hyprMonitor
+                        surface: monitor.surface
+                        pinned: monitor.pinned
+                        mainHovered: monitor.hovered
+                        onTogglePinned: monitor.pinned = !monitor.pinned
+
+                        HoverHandler {
+                            id: pillHover
+                            enabled: !monitor.fullscreen && monitor.shellShown
+                            onHoveredChanged: if (hovered) monitor.enter(); else clearHover.restart();
+                        }
+
+                        opacity: (monitor.fullscreen || !monitor.shellShown) ? 0 : 1
+                        Behavior on opacity { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
+                        transform: Translate {
+                            y: (monitor.fullscreen || !monitor.shellShown) ? -(pill.height + overlay.topGap) : 0
+                            Behavior on y { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
+                        }
+
+                        onRequestSurface: (name) => root.toggleSurface(monitor.modelData.name, name)
+                        onRequestClose: root.close()
+                    }
+                }
+
+            }
         }
     }
 }

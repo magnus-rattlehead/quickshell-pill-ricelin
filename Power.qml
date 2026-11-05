@@ -1,247 +1,72 @@
 pragma ComponentBehavior: Bound
-
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import "Singletons"
-import "lib/glitch.js" as Glitch
-
 
 PillSurface {
     id: root
-
-    mTop: 15
-    mLeft: 17
-    mRight: 17
-    mBottom: 14
-
-    property string hovered: ""
-    property int focusIndex: -1
+    topPadding: 15 * s; leftPadding: 17 * s; rightPadding: 17 * s; bottomPadding: 14 * s
+    implicitWidth: 330 * s
+    contentItem.implicitHeight: header.height + 12 * s + actionRow.implicitHeight
     readonly property var actions: [
-        { key: "lock",     glyph: "lock",     label: "Lock",     danger: false, dispatch: "",             argv: ["sh", "-c", "pidof hyprlock || loginctl lock-session"] },
-        { key: "logout",   glyph: "logout",   label: "Logout",   danger: true,  dispatch: "hl.dsp.exit()", argv: [] },
-        { key: "suspend",  glyph: "suspend",  label: "Sleep",    danger: false, dispatch: "",             argv: ["loginctl", "suspend"] },
-        { key: "reboot",   glyph: "reboot",   label: "Restart",  danger: true,  dispatch: "",             argv: ["loginctl", "reboot"] },
-        { key: "shutdown", glyph: "shutdown", label: "Shutdown", danger: true,  dispatch: "",             argv: ["loginctl", "poweroff"] }
+        { glyph: "lock", label: "Lock", argv: Config.lockCommand },
+        { glyph: "logout", label: "Logout", argv: null },
+        { glyph: "bedtime", label: "Sleep", argv: Config.suspendCommand },
+        { glyph: "restart_alt", label: "Restart", argv: Config.rebootCommand },
+        { glyph: "power_settings_new", label: "Shutdown", argv: Config.shutdownCommand }
     ]
 
-    readonly property int splitAfter: 2
-
-    component IconToggleChip: ButtonSurface {
-        id: chip
-        property string glyph: ""
-        property bool on: false
-        property string tipTitle: ""
-        property string tipDesc: ""
-        signal toggled()
-
-        width: 26 * root.s
-        height: 26 * root.s
-        radius: 4 * root.s
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: chip.glyph
-            color: chip.on ? Theme.vermLit : Theme.iconDim
-            stroke: 1.7
-        }
-
-        HoverHandler { id: chipHover }
-
-        MouseArea {
-            id: chipArea
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onEntered: Glitch.hover(root)
-            onClicked: { Glitch.click(root); chip.toggled(); }
-        }
-
-        Tooltip {
-            s: root.s
-            placement: "below"
-            title: chip.tipTitle
-            desc: chip.tipDesc
-            show: chipHover.hovered
-        }
+    function run(action) {
+        if (action.argv === null) Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.exit()" : "exit");
+        else Quickshell.execDetached(action.argv);
+        requestClose();
     }
-
-    function run(a) {
-        if (a.dispatch && a.dispatch.length)
-            Hyprland.dispatch(a.dispatch);
-        else
-            Quickshell.execDetached(a.argv);
-        root.requestClose();
-    }
-
-
-    function move(dir) {
-        if (focusIndex < 0)
-            focusIndex = dir > 0 ? 0 : actions.length - 1;
-        else
-            focusIndex = Math.max(0, Math.min(actions.length - 1, focusIndex + dir));
-    }
-
-
-    function pressFocused() {
-        if (focusIndex < 0 || focusIndex >= actions.length)
-            return false;
-        run(actions[focusIndex]);
-        return true;
-    }
-
-    onActiveChanged: if (!active) {
-        hovered = "";
-
-        focusIndex = -1;
-    }
-
-    Item {
+    SectionHeader {
         id: header
-        z: 10
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 22 * root.s
-
-        Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
-            Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                text: "電"
-                color: Theme.cream
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 16 * root.s
-            }
-            Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                text: "POWER"
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
-            }
-        }
-
-        IconToggleChip {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            glyph: "awake"
-            on: Flags.keepAwake
-            tipTitle: "Keep awake"
-            tipDesc: "Block sleep and screen-off"
-            onToggled: Flags.keepAwake = !Flags.keepAwake
+        width: parent.width
+        s: root.s
+        text: "POWER"
+        PanelButton {
+            s: root.s; glyph: "visibility"; tip: "Keep awake · Block sleep and screen-off"
+            checked: Flags.keepAwake
+            onClicked: Flags.keepAwake = !Flags.keepAwake
         }
     }
-
     Row {
-        id: tiles
-        anchors.horizontalCenter: parent.horizontalCenter
+        id: actionRow
         anchors.top: header.bottom
-        anchors.topMargin: 14 * root.s
-        spacing: 12 * root.s
-
+        anchors.topMargin: 12 * root.s
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 6 * root.s
         Repeater {
             model: root.actions
-
-            delegate: Row {
-                id: cell
-                required property int index
+            PanelButton {
+                id: actionButton
                 required property var modelData
-                spacing: 12 * root.s
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: cell.index === root.splitAfter
-                    width: 1
-                    height: 26 * root.s
-                    color: Theme.hair
-                }
-
-                Item {
-                    id: tile
-                    width: 50 * root.s
-                    height: 50 * root.s
-
-                    readonly property bool kbFocus: root.focusIndex === cell.index
-                    readonly property bool isHover: root.hovered === cell.modelData.key || tile.kbFocus
-                    readonly property bool lit: isHover
-                    readonly property color accent: cell.modelData.danger ? Theme.red : Theme.cream
-
-                    onKbFocusChanged: {
-                        if (!tile.kbFocus)
-                            return;
-                        root.hovered = cell.modelData.key;
-
-
-                    }
-
-                    ButtonSurface {
-                        outlined: tile.kbFocus
-                        anchors.fill: parent
-                        radius: Motion.rTile * root.s
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    }
-
+                s: root.s
+                width: 54 * root.s
+                height: 58 * root.s
+                enabled: modelData.argv === null || modelData.argv.length > 0
+                tip: modelData.label
+                onClicked: root.run(modelData)
+                contentItem: Column {
+                    spacing: 6 * root.s
                     GlyphIcon {
-                        anchors.centerIn: parent
-                        width: 22 * root.s
-                        height: 22 * root.s
-                        name: cell.modelData.glyph
-                        color: tile.lit ? tile.accent : Theme.iconDim
-                        stroke: 1.9
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 22 * root.s; height: width
+                        name: actionButton.modelData.glyph
+                        color: Theme.text
                     }
-
-                    MouseArea {
-                        id: powerArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: { Glitch.hover(root);
-                            root.hovered = cell.modelData.key;
-
-
-                        }
-                        onExited: {
-                            if (root.hovered === cell.modelData.key)
-                                root.hovered = "";
-                        }
-                        onClicked: { Glitch.click(root); root.run(cell.modelData); }
+                    PanelLabel {
+                        width: parent.width
+                        text: actionButton.modelData.label
+                        color: Theme.placeholderText
+                        font.pixelSize: 8 * root.s
+                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
             }
         }
-    }
-
-    Text {
-        textFormat: Text.PlainText
-        id: label
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: tiles.bottom
-        anchors.topMargin: 12 * root.s
-        readonly property string focusKey: root.hovered
-        readonly property var act: {
-            for (var i = 0; i < root.actions.length; i++)
-                if (root.actions[i].key === label.focusKey)
-                    return root.actions[i];
-            return null;
-        }
-        text: act ? act.label : ""
-        color: act && act.danger ? Theme.red : Theme.subtle
-        font.family: Theme.font
-        font.pixelSize: 11 * root.s
-        font.weight: Font.Medium
-        font.letterSpacing: 0.4 * root.s
-        opacity: text.length > 0 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
     }
 }

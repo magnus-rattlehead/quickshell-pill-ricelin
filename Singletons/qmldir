@@ -3,7 +3,8 @@ singleton Motion Motion.qml
 singleton Flags Flags.qml
 singleton Notifs Notifs.qml
 singleton Sysmon Sysmon.qml
-singleton Workspacerules Workspacerules.qml
+singleton Config Config.qml
 singleton Players Players.qml
-singleton Weather Weather.qml
 singleton Cliphist Cliphist.qml
+singleton NetworkState NetworkState.qml
+singleton IconFont IconFont.qml

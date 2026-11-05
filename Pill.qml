@@ -1,215 +1,56 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import Quickshell
-import Quickshell.Networking
-import Quickshell.Hyprland
 import "Singletons"
-import "lib/glitch.js" as Glitch
 
-Item {
+Control {
     id: pill
+    palette: Theme
+    font.family: Flags.uiFont || Config.font
+    font.pixelSize: 10 * s
 
     property real s: 1
-    property string screenName: ""
-    property var barWindow
+    property var hyprMonitor: null
     property string surface: ""
 
-    property bool hovered: false
+    property bool mainHovered: false
     property bool pinned: false
-    property bool forcePinned: false
-    property bool hoverLatch: false
-    property string linkInitialView: "main"
-    property int navIndex: 0
 
-    readonly property bool held: pinned || forcePinned
     readonly property bool surfaceOpen: surface.length > 0
-    readonly property bool expanded: surfaceOpen || held || hoverLatch
+    readonly property bool expanded: surfaceOpen || pinned || mainHovered
 
-    readonly property bool mixerOpen: surface === "mixer"
-    readonly property bool calendarOpen: surface === "calendar"
-    readonly property bool launcherOpen: surface === "launcher"
-    readonly property bool clipboardOpen: surface === "clipboard"
-    readonly property bool powerOpen: surface === "power"
-    readonly property bool mediaOpen: surface === "media"
-    readonly property bool linkOpen: surface === "link"
-    readonly property bool sysmonOpen: surface === "sysmon"
-    readonly property bool toastActive: Notifs.popups.length > 0 && !surfaceOpen && !expanded
-    readonly property var navTargets: {
-        var targets = ["calendar"];
-        if (pill.wifiDev !== null && pill.wifiOn)
-            targets.push("wifi");
-        targets.push("notifications");
-        targets.push("mixer");
-        targets.push("sysmon");
-        if (Players.list.length > 0)
-            targets.push("media");
-        targets.push("power");
-        return targets;
-    }
-    readonly property int navCursor: navTargets.length === 0
-        ? -1
-        : Math.max(0, Math.min(navIndex, navTargets.length - 1))
-    readonly property int activeWorkspaceId: {
-        var mons = Hyprland.monitors.values;
-        for (var i = 0; i < mons.length; i++) {
-            if (mons[i].name === pill.screenName && mons[i].activeWorkspace)
-                return mons[i].activeWorkspace.id;
-        }
-        return Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : 0;
-    }
-
-    readonly property var netDevices: (typeof Networking !== "undefined" && Networking && Networking.devices) ? Networking.devices.values : []
-    readonly property var wifiDev: netDevices.find(function(d) { return d && d.type === DeviceType.Wifi }) || null
-    readonly property bool wifiOn: (typeof Networking !== "undefined" && Networking) ? Networking.wifiEnabled : false
-    readonly property var wifiNets: (wifiDev && wifiDev.networks) ? wifiDev.networks.values : []
-    readonly property var wifiActive: wifiNets.find(function(n) { return n && n.connected }) || null
-    readonly property real wifiLevel: (wifiActive && wifiActive.signalStrength) || 0
+    readonly property bool toastActive: Notifs.popup !== null && !surfaceOpen && !pinned
+    readonly property string page: Config.pages[surface] || ""
+    readonly property PillSurface currentPage: pageLoader.item as PillSurface
 
     signal requestSurface(string name)
     signal requestClose()
-    signal requestHide()
-
-    function surfaceItem(ld) {
-        ld.active = true;
-        return ld.item;
-    }
+    signal togglePinned()
 
     function linkBack() {
-        return (pill.linkOpen && ldLink.item) ? ldLink.item.back() : false;
+        var link = pageLoader.item as Link;
+        return link ? link.back() : false;
     }
 
-    function linkKeyPress(key, isAutoRepeat) {
-        return (pill.linkOpen && ldLink.item && ldLink.item.keyPress)
-            ? ldLink.item.keyPress(key, isAutoRepeat)
-            : false;
-    }
-
-    function surfaceBack() {
-        if (!linkBack())
-            requestClose();
-    }
-
-    function mixerStep(deltaPct) {
-        return (pill.mixerOpen && ldMixer.item) ? ldMixer.item.stepFocused(deltaPct) : false;
-    }
-
-    function mixerFocusMove(dir) {
-        if (pill.mixerOpen && ldMixer.item)
-            ldMixer.item.moveFocus(dir);
-    }
-
-    function powerMove(dir) {
-        if (pill.powerOpen && ldPower.item)
-            ldPower.item.move(dir);
-    }
-
-    function powerPress() {
-        return (pill.powerOpen && ldPower.item) ? ldPower.item.pressFocused() : false;
-    }
-
-    function normalizeTopNav() {
-        if (navTargets.length === 0) {
-            navIndex = -1;
-            return;
-        }
-        if (navIndex < 0)
-            navIndex = 0;
-        else if (navIndex >= navTargets.length)
-            navIndex = navTargets.length - 1;
-    }
-
-    function navFocused(key) {
-        if (!hover.live || navTargets.length === 0)
-            return false;
-        return navTargets[navCursor] === key;
-    }
-
-    function moveTopNav(dir) {
-        if (!hover.live || navTargets.length === 0)
-            return false;
-        normalizeTopNav();
-        navIndex = (navIndex + dir + navTargets.length) % navTargets.length;
-        return true;
-    }
-
-    function activateTopNav() {
-        if (!hover.live || navTargets.length === 0)
-            return false;
-        normalizeTopNav();
-
-        var target = navTargets[navIndex];
-        if (target === "calendar") {
-            requestSurface("calendar");
-        } else if (target === "wifi") {
-            linkInitialView = "main";
-            requestSurface("link");
-        } else if (target === "notifications") {
-            linkInitialView = "main";
-            requestSurface("link");
-        } else if (target === "mixer") {
-            requestSurface("mixer");
-        } else if (target === "sysmon") {
-            requestSurface("sysmon");
-        } else if (target === "media") {
-            requestSurface("media");
-        } else if (target === "power") {
-            requestSurface("power");
-        }
-        return true;
-    }
-
-    function toggleKeyboardExpanded() {
-        if (surfaceOpen)
-            return false;
-        var want = !expanded;
-        pinned = want;
-        hoverLatch = want;
-        if (want)
-            normalizeTopNav();
-        else
-            graceTimer.stop();
-        return true;
-    }
-
-    function resetKeyboardState() {
-        navIndex = 0;
-        pinned = false;
-        hoverLatch = false;
-        graceTimer.stop();
-    }
-
-    onHoveredChanged: {
-        if (hovered) {
-            hoverLatch = true;
-            graceTimer.stop();
-        } else {
-            graceTimer.restart();
-        }
-    }
-
-    onSurfaceOpenChanged: if (surfaceOpen) pinned = false
-    onLinkOpenChanged: if (!linkOpen) linkInitialView = "main"
-    onNavTargetsChanged: normalizeTopNav()
-    onExpandedChanged: if (expanded) normalizeTopNav()
-
-    Timer {
-        id: graceTimer
-        interval: 260
-        onTriggered: pill.hoverLatch = false
+    MouseArea {
+        anchors.fill: parent
+        enabled: pill.surfaceOpen
+        onClicked: pill.requestClose()
     }
 
     TapHandler {
-        enabled: !pill.surfaceOpen
+        enabled: !pill.surfaceOpen && !pill.toastActive
         gesturePolicy: TapHandler.WithinBounds
-        onTapped: pill.pinned = !pill.pinned
+        onTapped: pill.togglePinned()
     }
 
     QtObject {
         id: clock
-        readonly property var loc: Qt.locale("en_US")
+        readonly property var loc: Qt.locale(Config.locale)
         readonly property var now: sysClock.date
-        readonly property string hhmm: Qt.formatTime(now, "h:mm" + (Flags.clockSeconds ? ":ss" : "") + " AP")
+        readonly property string hhmm: Qt.formatTime(now, Flags.clockSeconds ? Config.timeFormatSeconds : Config.timeFormat)
         readonly property string date: loc.toString(now, "ddd d MMM")
     }
 
@@ -218,61 +59,18 @@ Item {
         precision: Flags.clockSeconds ? SystemClock.Seconds : SystemClock.Minutes
     }
 
-    readonly property real restW: Math.max(160 * s, restRow.implicitWidth + 36 * s)
+    readonly property real restW: Math.max(160 * s, restClock.implicitWidth + 36 * s)
     readonly property real restH: 38 * s
     readonly property real hoverW: hoverRow.implicitWidth + 40 * s
     readonly property real hoverH: 58 * s
-    readonly property real launcherW: 360 * s
-    readonly property real launcherH: 332 * s
-    readonly property real clipboardW: 360 * s
-    readonly property real clipboardH: 332 * s
-    readonly property real mixerH: 218 * s
-    readonly property real mediaW: (Players.pickable.length > 1 ? 460 : 390) * s
-    readonly property real mediaH: 150 * s
-    readonly property real powerW: 330 * s
-    readonly property real powerH: 150 * s
-    readonly property real sysmonW: Math.max(392, 260 + 132 * Math.max(1, Sysmon.gpus.length)) * s
     readonly property real toastW: 342 * s
-    readonly property real openCorner: 12 * s
-    readonly property real restCorner: 10 * s
 
     readonly property size targetSize: {
-        if (launcherOpen) {
-            surfaceItem(ldLauncher);
-            return Qt.size(launcherW, launcherH);
-        }
-        if (clipboardOpen) {
-            surfaceItem(ldClip);
-            return Qt.size(clipboardW, clipboardH);
-        }
-        if (calendarOpen) {
-            var cal = surfaceItem(ldCalendar);
-            return Qt.size((cal && cal.implicitWidth > 0 ? cal.implicitWidth : 282 * s) + 36 * s,
-                           (cal ? cal.implicitHeight : 204 * s) + 32 * s);
-        }
-        if (mixerOpen) {
-            var mix = surfaceItem(ldMixer);
-            return Qt.size(124 * Math.max(2, mix ? mix.faderCount : 2) * s, mixerH);
-        }
-        if (linkOpen) {
-            var link = surfaceItem(ldLink);
-            return Qt.size(link ? link.desiredW : 330 * s,
-                           (link ? link.implicitHeight : 280 * s) + 26 * s);
-        }
-        if (mediaOpen) {
-            surfaceItem(ldMedia);
-            return Qt.size(mediaW, mediaH);
-        }
-        if (powerOpen) {
-            surfaceItem(ldPower);
-            return Qt.size(powerW, powerH);
-        }
-        if (sysmonOpen) {
-            var sys = surfaceItem(ldSysmon);
-            return Qt.size(sysmonW, (sys ? sys.implicitHeight : 220 * s) + 33 * s);
-        }
+        if (currentPage)
+            return Qt.size(currentPage.implicitWidth, currentPage.implicitHeight);
         if (toastActive) {
-            return Qt.size(toastW, toastLoader.item ? toastLoader.item.implicitHeight + 24 * s : 64 * s);
+            var card = toastLoader.item as NotificationCard;
+            return Qt.size(toastW, card ? card.implicitHeight : 64 * s);
         }
         if (expanded)
             return Qt.size(Math.max(restW, hoverW), hoverH);
@@ -285,123 +83,51 @@ Item {
     width: targetW
     height: targetH
 
-    readonly property real morphCloseness: {
-        const d = Math.max(Math.abs(width - targetW), Math.abs(height - targetH));
-        return 1 - Math.min(1, d / (110 * s));
-    }
-    readonly property real morphRadius: surfaceOpen ? openCorner : restCorner
-    readonly property real materialOpacity: Math.min(Flags.pillOpacity, Theme.pillOpacity)
-
     Behavior on width { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
     Behavior on height { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
 
-    // Process the actual UI pixels using the user's Ghostty shader chain.
-    function triggerGlitch(click) { glitchFeedback.trigger(click); }
-
-    GlitchFeedback {
-        id: glitchFeedback
-        effectsEnabled: pill.visible && pill.opacity > 0.01
-    }
-
-    // Match the captured texture to the displayed bounds; padded sourceRect
-    // textures are otherwise squeezed into this item's original geometry.
-    layer.enabled: visible && opacity > 0.01 && GraphicsInfo.api !== GraphicsInfo.Software
-    layer.smooth: true
-    layer.effect: PanelEffect {
-        panelSize: Qt.size(pill.width, pill.height)
-        pixelRatio: pill.Screen.devicePixelRatio
-        time: glitchFeedback.time
-        hoverStrength: glitchFeedback.hoverStrength
-        clickStrength: glitchFeedback.clickStrength
-    }
-
     Rectangle {
         anchors.fill: parent
-        radius: pill.morphRadius
-        color: Qt.alpha(Theme.cardTop, pill.materialOpacity)
+        visible: !pill.toastActive
+        radius: (pill.surfaceOpen ? 12 : 10) * pill.s
+        color: Qt.alpha(Theme.window, Flags.pillOpacity)
         border.width: 1
-        border.color: Theme.border
+        border.color: Theme.midlight
     }
 
-    component PillIcon: Item {
-        id: iconRoot
-        property string glyph: ""
-        property string tip: ""
-        property bool active: false
-        property bool focused: false
-        signal clicked()
-
+    component PillIcon: PanelButton {
+        s: pill.s
         width: 22 * pill.s
         height: 22 * pill.s
-
-        ButtonSurface {
-            outlined: iconRoot.focused
-            anchors.fill: parent
-            radius: 4 * pill.s
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-        }
-
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * pill.s
-            height: 15 * pill.s
-            name: iconRoot.glyph
-            color: iconArea.containsMouse || iconRoot.active || iconRoot.focused ? Theme.cream : Theme.iconDim
-            stroke: 1.7
-        }
-
-        MouseArea {
-            id: iconArea
-            anchors.fill: parent
-            anchors.margins: -5 * pill.s
-            hoverEnabled: true
-            enabled: hover.live
-            cursorShape: Qt.PointingHandCursor
-            onEntered: Glitch.hover(pill)
-            onClicked: { Glitch.click(pill); iconRoot.clicked(); }
-        }
-
-        Tooltip {
-            s: pill.s
-            placement: "below"
-            title: iconRoot.tip
-            show: iconArea.containsMouse
-        }
+        padding: 3 * pill.s
+        enabled: hover.live
     }
 
     Item {
         id: rest
         anchors.fill: parent
-        opacity: (!pill.expanded && !pill.surfaceOpen && !pill.toastActive) ? Math.pow(pill.morphCloseness, 1.4) : 0
+        opacity: (!pill.expanded && !pill.surfaceOpen && !pill.toastActive) ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
-        Row {
-            id: restRow
+        PanelLabel {
+            id: restClock
             anchors.centerIn: parent
-            spacing: 9 * pill.s
-
-            Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                text: clock.hhmm
-                color: Theme.cream
-                font.family: Theme.font
-                font.pixelSize: 16 * pill.s
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
-            }
+            text: clock.hhmm
+            font.pixelSize: 16 * pill.s
+            font.weight: Font.DemiBold
+            font.features: { "tnum": 1 }
         }
     }
 
     Item {
         id: hover
         anchors.fill: parent
-        opacity: (pill.expanded && !pill.surfaceOpen) ? Math.pow(pill.morphCloseness, 1.2) : 0
+        opacity: live ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
-        readonly property bool live: pill.expanded && !pill.surfaceOpen
+        readonly property bool live: pill.expanded && !pill.surfaceOpen && !pill.toastActive
 
         Row {
             id: hoverRow
@@ -409,72 +135,49 @@ Item {
             spacing: 18 * pill.s
 
             Workspaces {
+                id: workspaceModule
                 anchors.verticalCenter: parent.verticalCenter
                 width: implicitWidth
-                screenName: pill.screenName
+                hyprMonitor: pill.hyprMonitor
                 s: pill.s
                 gap: 8 * pill.s
                 enabled: hover.live
             }
 
             Rectangle {
+                visible: workspaceModule.hasMultipleWorkspaces
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 22 * pill.s
-                color: Theme.hair
+                color: Qt.alpha(Theme.text, 0.14)
             }
 
-            Item {
+            PanelButton {
                 anchors.verticalCenter: parent.verticalCenter
-                width: hoverClock.implicitWidth
-                height: hoverClock.implicitHeight
-                readonly property bool navFocus: pill.navFocused("calendar")
-
-                ButtonSurface {
-                    outlined: parent.navFocus
-                    anchors.centerIn: parent
-                    width: parent.width + 22 * pill.s
-                    height: parent.height + 10 * pill.s
-                    radius: 4 * pill.s
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-                }
-
-                Column {
-                    id: hoverClock
-                    anchors.centerIn: parent
+                s: pill.s
+                enabled: hover.live
+                padding: 5 * pill.s
+                horizontalPadding: 11 * pill.s
+                implicitHeight: implicitContentHeight + topPadding + bottomPadding
+                onClicked: pill.requestSurface("calendar")
+                contentItem: Column {
                     spacing: 2 * pill.s
-                    Text {
-                        textFormat: Text.PlainText
+                    PanelLabel {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: clock.hhmm
-                        color: Theme.cream
-                        font.family: Theme.font
                         font.pixelSize: 18 * pill.s
                         font.weight: Font.DemiBold
                         font.features: { "tnum": 1 }
                     }
-                    Text {
-                        textFormat: Text.PlainText
+                    PanelLabel {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: clock.date
-                        color: Theme.dim
-                        font.family: Theme.font
+                        color: Theme.placeholderText
                         font.pixelSize: 8.5 * pill.s
                         font.weight: Font.Medium
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 1.2 * pill.s
                     }
-                }
-
-                MouseArea {
-                    anchors.centerIn: parent
-                    width: hoverClock.implicitWidth + 22 * pill.s
-                    height: hoverClock.implicitHeight + 10 * pill.s
-                    enabled: hover.live
-                    cursorShape: Qt.PointingHandCursor
-                    hoverEnabled: true
-                    onEntered: Glitch.hover(pill)
-                    onClicked: { Glitch.click(pill); pill.requestSurface("calendar"); }
                 }
             }
 
@@ -482,187 +185,72 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 1
                 height: 22 * pill.s
-                color: Theme.hair
+                color: Qt.alpha(Theme.text, 0.14)
             }
 
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10 * pill.s
 
-
-                Item {
+                PanelButton {
+                    id: wifiButton
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: pill.wifiDev !== null && pill.wifiOn
-                    width: 22 * pill.s
-                    height: 22 * pill.s
-                    readonly property bool navFocus: pill.navFocused("wifi")
-
-                    ButtonSurface {
-                        outlined: parent.navFocus
-                        anchors.fill: parent
-                        radius: 4 * pill.s
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    }
-
-                    WifiGlyph {
-                        anchors.centerIn: parent
+                    width: 22 * pill.s; height: width
+                    s: pill.s; padding: 2.5 * pill.s
+                    enabled: hover.live
+                    tip: "Network & Bluetooth"
+                    onClicked: pill.requestSurface("link")
+                    contentItem: WifiGlyph {
                         s: pill.s
-                        level: pill.wifiLevel
-                        on: pill.wifiOn
-                        litColor: wifiArea.containsMouse || parent.navFocus ? Theme.cream : Theme.iconDim
-                    }
-
-                    MouseArea {
-                        id: wifiArea
-                        anchors.fill: parent
-                        anchors.margins: -5 * pill.s
-                        hoverEnabled: true
-                        enabled: hover.live
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: Glitch.hover(pill)
-                        onClicked: { Glitch.click(pill);
-                            pill.linkInitialView = "main";
-                            pill.requestSurface("link");
-                        }
+                        level: NetworkState.activeNetwork ? NetworkState.activeNetwork.signalStrength : 0
+                        on: NetworkState.wifiEnabled
+                        litColor: wifiButton.hovered ? Theme.text : Theme.highlight
                     }
                 }
 
                 PillIcon {
-                    glyph: "inbox"
+                    glyph: "notifications"
                     tip: "Notifications"
-                    active: Notifs.unread > 0
-                    focused: pill.navFocused("notifications")
-                    onClicked: { Glitch.click(pill);
-                        pill.linkInitialView = "main";
-                        pill.requestSurface("link");
-                    }
+                    onClicked: pill.requestSurface("notifications")
                 }
 
                 PillIcon {
-                    glyph: "mixer"
+                    glyph: "tune"
                     tip: "Mixer"
-                    focused: pill.navFocused("mixer")
-                    onClicked: { Glitch.click(pill); pill.requestSurface("mixer"); }
+                    onClicked: { pill.requestSurface("mixer"); }
                 }
 
                 PillIcon {
-                    glyph: "monitor"
+                    glyph: "browse_activity"
                     tip: "System"
-                    focused: pill.navFocused("sysmon")
-                    onClicked: { Glitch.click(pill); pill.requestSurface("sysmon"); }
+                    onClicked: { pill.requestSurface("sysmon"); }
                 }
 
                 PillIcon {
-                    glyph: "music"
+                    glyph: "music_note"
                     tip: "Media"
                     visible: Players.list.length > 0
-                    focused: pill.navFocused("media")
-                    onClicked: { Glitch.click(pill); pill.requestSurface("media"); }
+                    onClicked: { pill.requestSurface("media"); }
                 }
 
                 PillIcon {
-                    glyph: "shutdown"
+                    glyph: "power_settings_new"
                     tip: "Power"
-                    focused: pill.navFocused("power")
-                    onClicked: { Glitch.click(pill); pill.requestSurface("power"); }
+                    onClicked: { pill.requestSurface("power"); }
                 }
             }
         }
     }
 
     Loader {
-        id: ldMixer
-        active: false
+        id: pageLoader
         anchors.fill: parent
-        sourceComponent: Mixer {
-            s: pill.s
-            open: pill.mixerOpen
-            morphCloseness: pill.morphCloseness
-        }
-    }
-
-    Loader {
-        id: ldCalendar
-        active: true
-        anchors.fill: parent
-        sourceComponent: Calendar {
-            s: pill.s
-            open: pill.calendarOpen
-            morphCloseness: pill.morphCloseness
-        }
-    }
-
-    Loader {
-        id: ldLauncher
-        active: false
-        anchors.fill: parent
-        sourceComponent: Launcher {
-            s: pill.s
-            open: pill.launcherOpen
-            workspaceId: pill.activeWorkspaceId
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
-        }
-    }
-
-    Loader {
-        id: ldClip
-        active: false
-        anchors.fill: parent
-        sourceComponent: Clipboard {
-            s: pill.s
-            open: pill.clipboardOpen
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
-        }
-    }
-
-    Loader {
-        id: ldPower
-        active: false
-        anchors.fill: parent
-        sourceComponent: Power {
-            s: pill.s
-            open: pill.powerOpen
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
-        }
-    }
-
-    Loader {
-        id: ldMedia
-        active: false
-        anchors.fill: parent
-        sourceComponent: Media {
-            s: pill.s
-            open: pill.mediaOpen
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
-        }
-    }
-
-    Loader {
-        id: ldLink
-        active: false
-        anchors.fill: parent
-        sourceComponent: Link {
-            s: pill.s
-            open: pill.linkOpen
-            initialView: pill.linkInitialView
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
-        }
-    }
-
-    Loader {
-        id: ldSysmon
-        active: false
-        anchors.fill: parent
-        sourceComponent: SysmonSurface {
-            s: pill.s
-            open: pill.sysmonOpen
-            morphCloseness: pill.morphCloseness
-            onRequestClose: pill.requestClose()
+        source: pill.page
+        onLoaded: {
+            var page = item as PillSurface;
+            page.s = Qt.binding(() => pill.s);
+            page.active = Qt.binding(() => pill.surfaceOpen);
+            page.requestClose.connect(pill.requestClose);
         }
     }
 
@@ -670,27 +258,16 @@ Item {
         id: toastLoader
         active: pill.toastActive
         anchors.fill: parent
-        anchors.topMargin: 12 * pill.s
-        anchors.leftMargin: 16 * pill.s
-        anchors.rightMargin: 16 * pill.s
-        anchors.bottomMargin: 12 * pill.s
         opacity: active ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
-        sourceComponent: Item {
-            implicitHeight: toastContent.implicitHeight
-
-            Toast {
-                id: toastContent
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                s: pill.s
-                live: toastLoader.active
-                notif: Notifs.popups.length > 0 ? Notifs.popups[Notifs.popups.length - 1] : null
-            }
+        sourceComponent: NotificationCard {
+            s: pill.s
+            backgroundColor: Qt.alpha(Theme.window, Flags.pillOpacity)
+            notif: Notifs.popup
+            expanded: Notifs.popupExpanded
+            onClicked: Notifs.popupExpanded = !Notifs.popupExpanded
         }
     }
-
 }

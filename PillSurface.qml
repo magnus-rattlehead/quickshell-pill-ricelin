@@ -1,37 +1,27 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import "Singletons"
 
-
-Item {
+Control {
     id: surface
 
     property real s: 1
-    property bool open: false
-    property real morphCloseness: 1
-
-    property real mTop: 0
-    property real mLeft: 0
-    property real mRight: 0
-    property real mBottom: 0
+    property bool active: false
+    default property alias contentData: pageContent.data
 
     signal requestClose()
 
+    data: MouseArea {
+        anchors.fill: parent
+        onClicked: surface.requestClose()
+    }
 
-    readonly property bool active: open
-
-
-    property bool settled: false
-    onOpenChanged: if (!open) settled = false
-    onMorphClosenessChanged: if (open && morphCloseness > 0.92) settled = true
+    contentItem: Item { id: pageContent; z: 1 }
 
     anchors.fill: parent
-    anchors.topMargin: mTop * s
-    anchors.leftMargin: mLeft * s
-    anchors.rightMargin: mRight * s
-    anchors.bottomMargin: mBottom * s
 
-    enabled: open
-    opacity: open ? (settled ? 1 : Math.pow(morphCloseness, 1.3)) : 0
+    enabled: active
+    opacity: active ? 1 : 0
     visible: opacity > 0.01
 
     Behavior on opacity {

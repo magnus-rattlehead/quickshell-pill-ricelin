@@ -1,350 +1,105 @@
 pragma ComponentBehavior: Bound
-
 import QtQuick
+import QtQuick.Controls.Basic as Controls
 import "Singletons"
-import "lib/glitch.js" as Glitch
 
-
-PillSurface {
+SearchSurface {
     id: root
-
-    mTop: 15
-    mLeft: 17
-    mRight: 17
-    mBottom: 14
-
-    property string query: ""
-    property int selectedIndex: 0
-
-
-    property point lastPointer: Qt.point(-1, -1)
-
-    readonly property var results: {
-        var all = Cliphist.entries;
-        var q = query.trim().toLowerCase();
-        if (!q.length)
-            return all;
-        var out = [];
-        for (var i = 0; i < all.length; i++) {
-            var hay = (all[i].isImage ? all[i].label + " " + all[i].sizeLabel : all[i].preview).toLowerCase();
-            if (hay.indexOf(q) !== -1)
-                out.push(all[i]);
-        }
-        return out;
+    results: {
+        var needle = query.trim().toLowerCase();
+        return Cliphist.entries.filter(entry => entry.preview.toLowerCase().includes(needle));
     }
-
-    function focusField() { search.input.forceActiveFocus(); }
-
-    function move(delta) {
-        if (results.length === 0)
-            return;
-        selectedIndex = Math.max(0, Math.min(results.length - 1, selectedIndex + delta));
-        list.positionViewAtIndex(selectedIndex, ListView.Contain);
-    }
-
-    function activate() {
-        if (results.length === 0 || selectedIndex < 0 || selectedIndex >= results.length)
-            return;
-        Cliphist.copy(results[selectedIndex]);
-        root.requestClose();
-    }
-
+    onActivated: (entry) => { Cliphist.copy(entry); root.requestClose(); }
+    onActiveChanged: if (active) Cliphist.refresh()
     function removeAt(index) {
-        if (index < 0 || index >= results.length)
-            return;
-        Cliphist.remove(results[index]);
+        if (index >= 0 && index < results.length) Cliphist.remove(results[index]);
     }
-
-    onActiveChanged: {
-        if (active) {
-            query = "";
-            search.text = "";
-            selectedIndex = 0;
-            Cliphist.refresh();
-            Qt.callLater(root.focusField);
+    search.placeholderText: "Search clipboard"
+    counterText: results.length + " / " + Cliphist.count
+    search.z: 5
+    onSearchKeyPressed: (e) => {
+        if (e.key === Qt.Key_X && (e.modifiers & Qt.ControlModifier)
+            && root.search.selectedText.length === 0) {
+            root.removeAt(root.selectedIndex);
+            e.accepted = true;
         }
     }
-    onResultsChanged: if (selectedIndex >= results.length) selectedIndex = Math.max(0, results.length - 1)
-
-    SearchField {
-        id: search
-        z: 5
+    searchActions: Controls.DelayButton {
+        id: wipeBtn
+        anchors.verticalCenter: parent.verticalCenter
+        width: 22 * root.s; height: width
+        delay: 700
+        padding: 4 * root.s
+        onActivated: { Cliphist.wipe(); checked = false; }
+        contentItem: GlyphIcon { name: "delete"; color: Theme.placeholderText }
+        background: Rectangle { color: "transparent"; radius: 3 * root.s; border.color: Theme.midlight; border.width: wipeBtn.hovered ? 1 : 0 }
+        Controls.ToolTip.visible: hovered
+        Controls.ToolTip.text: "Hold to wipe history"
+    }
+    divider.data: Rectangle {
         anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        s: root.s
-        kanji: "控"
-        placeholder: "Search clipboard"
-        counterText: root.results.length + " / " + Cliphist.count
-        onTextChanged: {
-            root.query = text;
-            root.selectedIndex = 0;
-        }
-        onMoved: (d) => root.move(d)
-        onAccepted: root.activate()
-        onDismissed: root.requestClose()
-        onKeyPressed: (e) => {
-            if (e.key === Qt.Key_X && (e.modifiers & Qt.ControlModifier)
-                && search.input.selectedText.length === 0) {
-                root.removeAt(root.selectedIndex);
-                e.accepted = true;
-            }
-        }
-
-        Item {
-            id: wipeBtn
-            anchors.verticalCenter: parent.verticalCenter
-            width: 16 * root.s
-            height: 16 * root.s
-
-            readonly property real hold: wipeHeat.hold
-            readonly property bool holding: wipeHeat.holding
-            readonly property color tone: holding ? Theme.vermLit : (wipeArea.containsMouse ? Theme.cream : Theme.faint)
-
-            Tooltip {
-                s: root.s
-                placement: "below"
-                title: "hold to wipe"
-                show: wipeArea.containsMouse || wipeBtn.holding
-            }
-
-            Text {
-                textFormat: Text.PlainText
-                visible: Flags.showGlyphs
-                anchors.centerIn: parent
-                text: "掃"
-                color: wipeBtn.tone
-                font.family: Theme.fontJp
-                font.pixelSize: 12 * root.s
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-            }
-
-            GlyphIcon {
-                visible: !Flags.showGlyphs
-                anchors.centerIn: parent
-                width: 12 * root.s
-                height: 12 * root.s
-                name: "trash"
-                color: wipeBtn.tone
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-            }
-
-            HeatHold {
-                id: wipeHeat
-                onConfirmed: Cliphist.wipe()
-            }
-
-            MouseArea {
-                id: wipeArea
-                anchors.fill: parent
-                anchors.margins: -5 * root.s
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onEntered: Glitch.hover(root)
-                onPressed: wipeHeat.press()
-                onReleased: wipeHeat.release()
-                onExited: wipeHeat.cancel()
-            }
-        }
-    }
-
-    Rectangle {
-        id: divider
-        anchors.top: search.bottom
-        anchors.topMargin: 8 * root.s
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 1
-        color: Theme.hair
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            width: parent.width * wipeBtn.hold
-            visible: wipeBtn.holding
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.alpha(Theme.vermLit, 0.15) }
-                GradientStop { position: 1.0; color: Theme.vermLit }
-            }
-        }
-    }
-
-    Text {
-        textFormat: Text.PlainText
-        anchors.centerIn: list
-        visible: root.results.length === 0
-        text: root.query.length ? "No matches" : "History empty"
-        color: Theme.faint
-        font.family: Theme.font
-        font.pixelSize: 10.5 * root.s
-    }
-
-    ListView {
-        id: list
-        anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
-        anchors.left: parent.left
-        anchors.right: parent.right
         anchors.bottom: parent.bottom
-        spacing: 2 * root.s
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        model: root.results.length
+        anchors.right: parent.right
+        width: parent.width * wipeBtn.progress
+        visible: wipeBtn.progress > 0
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.0; color: Qt.alpha(Theme.accent, 0.15) }
+            GradientStop { position: 1.0; color: Theme.accent }
+        }
+    }
+    emptyText: query.length ? "No matches" : "History empty"
+    list.spacing: 2 * s
+    list.delegate: ResultDelegate {
+        id: row
+        height: 28 * root.s
+        readonly property var entry: root.results[index]
+        contentItem: Item {
+            anchors.fill: parent
+            anchors.leftMargin: 11 * root.s
+            anchors.rightMargin: 11 * root.s
 
-        delegate: Item {
-            id: row
-            required property int index
-            width: list.width
-            height: (entry && entry.isImage ? 44 : 28) * root.s
-
-            readonly property var entry: root.results[index]
-            readonly property bool selected: index === root.selectedIndex
-
-            HoverHandler {
-                id: rowHover
-                onPointChanged: {
-                    if (!hovered)
-                        return;
-                    var sp = point.scenePosition;
-                    if (sp.x !== root.lastPointer.x || sp.y !== root.lastPointer.y) {
-                        root.lastPointer = Qt.point(sp.x, sp.y);
-                        root.selectedIndex = row.index;
-                    }
-                }
-            }
-
-            ButtonSurface {
-                outlined: row.selected
-                anchors.fill: parent
-                radius: 4 * root.s
-                visible: row.selected || rowHover.hovered
-            }
-
-            MouseArea {
-                id: rowArea
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
-                onEntered: Glitch.hover(root)
-                onClicked: { Glitch.click(root);
-                    root.selectedIndex = row.index;
-                    root.activate();
-                }
+            PanelLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.right: tail.left
+                anchors.rightMargin: 8 * root.s
+                text: row.entry ? row.entry.preview : ""
+                color: row.selected ? Theme.text : Theme.light
+                font.pixelSize: 11.5 * root.s
+                font.weight: row.selected ? Font.DemiBold : Font.Medium
+                elide: Text.ElideRight
+                maximumLineCount: 1
             }
 
             Item {
-                anchors.fill: parent
-                anchors.leftMargin: 11 * root.s
-                anchors.rightMargin: 11 * root.s
+                id: tail
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 22 * root.s
+                height: width
 
-                Rectangle {
-                    id: thumbTile
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: row.entry !== undefined && row.entry.isImage
-                    width: visible ? 52 * root.s : 0
-                    height: 32 * root.s
-                    radius: 3 * root.s
-                    color: Theme.tileBg
-                    border.width: 1
-                    border.color: Theme.border
-                    clip: true
-
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        source: thumbTile.visible ? "file://" + row.entry.thumb : ""
-                        sourceSize.width: 128
-                        sourceSize.height: 128
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        smooth: true
-                    }
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: thumbTile.visible ? thumbTile.right : parent.left
-                    anchors.leftMargin: thumbTile.visible ? 9 * root.s : 0
-                    anchors.right: sizeTag.left
-                    anchors.rightMargin: 8 * root.s
-                    text: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
-                    color: row.entry !== undefined && row.entry.isImage
-                        ? (row.selected ? Theme.dim : Theme.faint)
-                        : (row.selected ? Theme.cream : Theme.subtle)
-                    font.family: Theme.font
-                    font.pixelSize: 11.5 * root.s
-                    font.weight: row.selected ? Font.DemiBold : Font.Medium
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                    textFormat: Text.PlainText
-                }
-
-                Text {
-                    textFormat: Text.PlainText
-                    id: sizeTag
-                    anchors.right: tail.left
-                    anchors.rightMargin: width > 0 ? 8 * root.s : 0
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
-                    width: text.length ? implicitWidth : 0
-                    color: Theme.faint
-                    font.family: Theme.font
-                    font.pixelSize: 10.5 * root.s
-                    font.features: { "tnum": 1 }
-                }
-
-                Item {
-                    id: tail
+                PanelLabel {
+                    id: ret
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(ret.implicitWidth, dismiss.implicitWidth)
-                    height: Math.max(ret.implicitHeight, dismiss.implicitHeight)
+                    opacity: row.selected && !row.hovered ? 1 : 0
+                    text: "↵"
+                    color: Theme.accent
+                    font.pixelSize: 12 * root.s
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                }
 
-                    Text {
-                        textFormat: Text.PlainText
-                        id: ret
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        opacity: row.selected && !rowHover.hovered ? 1 : 0
-                        text: "↵"
-                        color: Theme.vermLit
-                        font.family: Theme.font
-                        font.pixelSize: 12 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-                    }
-
-                    Text {
-                        textFormat: Text.PlainText
-                        id: dismiss
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        opacity: rowHover.hovered ? 1 : 0
-                        text: "✕"
-                        color: dismissArea.containsMouse ? Theme.cream : Theme.dim
-                        font.pixelSize: 10 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-                        MouseArea {
-                            id: dismissArea
-                            anchors.fill: parent
-                            anchors.margins: -6 * root.s
-                            enabled: rowHover.hovered
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: Glitch.hover(root)
-                            onClicked: { Glitch.click(root); root.removeAt(row.index); }
-                        }
-                    }
+                PanelButton {
+                    anchors.fill: parent
+                    s: root.s; padding: 2 * root.s
+                    text: "×"
+                    tip: "Delete entry"
+                    opacity: row.hovered ? 1 : 0
+                    enabled: row.hovered
+                    onClicked: root.removeAt(row.index)
                 }
             }
         }
-    }
-
-    WheelScroller {
-        anchors.fill: list
-        s: root.s
-        flick: list
     }
 }

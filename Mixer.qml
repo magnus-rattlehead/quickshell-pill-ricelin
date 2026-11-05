@@ -1,47 +1,23 @@
 pragma ComponentBehavior: Bound
-
 import QtQuick
-import QtQuick.Effects
+import QtQuick.Controls.Basic
 import Quickshell.Services.Pipewire
 import "Singletons"
-import "lib/glitch.js" as Glitch
 
 PillSurface {
     id: root
-
-    mTop: 13
-    mLeft: 14
-    mRight: 14
-    mBottom: 12
-
+    topPadding: 13 * s; leftPadding: 14 * s; rightPadding: 14 * s; bottomPadding: 16 * s
+    implicitWidth: 124 * faderCount * s
+    contentItem.implicitHeight: header.height + 10 * s + faders.implicitHeight
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
 
-    readonly property var outputSinks: {
-        void Pipewire.nodes.values;
-        var out = [];
-        var all = Pipewire.nodes.values;
-        for (var i = 0; i < all.length; i++) {
-            var n = all[i];
-            if (n && n.isSink && !n.isStream && n.audio)
-                out.push(n);
-        }
-        out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
-        return out;
-    }
-
-    readonly property var inputSources: {
-        void Pipewire.nodes.values;
-        var out = [];
-        var all = Pipewire.nodes.values;
-        for (var i = 0; i < all.length; i++) {
-            var n = all[i];
-            if (n && !n.isSink && !n.isStream && n.audio && !/monitor/i.test(n.name || ""))
-                out.push(n);
-        }
-        out.sort((a, b) => root.deviceLabel(a).localeCompare(root.deviceLabel(b)));
-        return out;
-    }
+    readonly property var outputSinks: Pipewire.nodes.values
+        .filter(node => node.isSink && !node.isStream && node.audio)
+        .sort((a, b) => deviceLabel(a).localeCompare(deviceLabel(b)))
+    readonly property var inputSources: Pipewire.nodes.values
+        .filter(node => !node.isSink && !node.isStream && node.audio && !/monitor/i.test(node.name))
+        .sort((a, b) => deviceLabel(a).localeCompare(deviceLabel(b)))
 
     function deviceLabel(node) {
         if (!node)
@@ -49,372 +25,164 @@ PillSurface {
         return node.description || node.nickname || node.name || "";
     }
 
-    property string openPicker: ""
-    property int focusIndex: -1
-    readonly property var faders: [volFader, micFader]
-    readonly property int faderCount: faders.length
-    readonly property bool surfaceHovered: hoverTracker.hovered
+    readonly property int faderCount: 2
+    onActiveChanged: if (!active) { outputPicker.popup.close(); inputPicker.popup.close(); }
+    PwObjectTracker { objects: [root.sink, root.source].concat(root.outputSinks, root.inputSources).filter(Boolean) }
 
-    readonly property int hoverIndex: surfaceHovered && width > 0 && faders.length > 0
-        && hoverTracker.point.position.y >= faderRow.y
-        ? Math.max(0, Math.min(faders.length - 1, Math.floor(hoverTracker.point.position.x / (width / faders.length))))
-        : -1
-    onHoverIndexChanged: if (hoverIndex >= 0 && !keyLatch.running) focusIndex = hoverIndex
-
-    HoverHandler { id: hoverTracker }
-
-    Timer {
-        id: keyLatch
-        interval: Motion.standard
-    }
-
-    onActiveChanged: {
-        focusIndex = active ? 0 : -1;
-        if (!active)
-            openPicker = "";
-    }
-
-    function stepFocused(deltaPct) {
-        if (focusIndex < 0)
-            return false;
-        faders[focusIndex].step(deltaPct);
-        keyLatch.restart();
-        return true;
-    }
-
-    function moveFocus(dir) {
-        focusIndex = focusIndex < 0 ? (dir > 0 ? 0 : faders.length - 1)
-                                    : (focusIndex + dir + faders.length) % faders.length;
-        keyLatch.restart();
-    }
-
-    PwObjectTracker {
-        objects: [root.sink, root.source].concat(root.outputSinks).concat(root.inputSources).filter(Boolean)
-    }
-
-    component DevicePickerChip: ButtonSurface {
-        id: dchip
+    component DevicePicker: ComboBox {
+        id: picker
+        property var current: null
         property string glyph: ""
-        property bool open: false
         property string tip: ""
-        signal toggled()
-
-        width: 26 * root.s
-        height: 26 * root.s
-        radius: 4 * root.s
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: dchip.glyph
-            color: dchip.open ? Theme.vermLit : Theme.iconDim
-            stroke: 1.7
-        }
-        HoverHandler { id: dchipHover }
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onEntered: Glitch.hover(root)
-            onClicked: { Glitch.click(root); dchip.toggled(); }
-        }
-
-        Tooltip {
-            s: root.s
-            placement: "below"
-            title: dchip.tip
-            show: dchipHover.hovered && !dchip.open
-        }
-    }
-
-    Item {
-        id: header
-        z: 5
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 24 * root.s
-
-        Row {
-            id: titleRow
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.rightMargin: (2 * 26 + 1 * 6 + 10) * root.s
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
-            clip: true
-
-            Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                visible: Flags.showGlyphs
-                text: "調"
-                color: Theme.cream
-                font.family: Theme.fontJp
-                font.weight: Font.Medium
-                font.pixelSize: 16 * root.s
-            }
-            Text {
-                textFormat: Text.PlainText
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, Math.max(0, titleRow.width
-                    - (Flags.showGlyphs ? 24 * root.s : 0)))
-                text: "MIXER"
-                elide: Text.ElideRight
-                clip: true
-                color: Theme.subtle
-                font.family: Theme.font
-                font.pixelSize: 10 * root.s
-                font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
-            }
-        }
-
-        Row {
-            id: controls
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 6 * root.s
-            DevicePickerChip {
-                glyph: "speaker"
-                open: root.openPicker === "out"
-                tip: "Output device"
-                onToggled: root.openPicker = root.openPicker === "out" ? "" : "out"
-            }
-            DevicePickerChip {
-                glyph: "mic"
-                open: root.openPicker === "in"
-                tip: "Input device"
-                onToggled: root.openPicker = root.openPicker === "in" ? "" : "in"
-            }
-        }
-    }
-
-    Rectangle {
-        id: divider
-        anchors.top: header.bottom
-        anchors.topMargin: 9 * root.s
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 1
-        color: Theme.hair
-    }
-
-    component DeviceMenu: Item {
-        id: menu
-        property string kind: ""
-        property var model: []
-        property var current
         signal pick(var node)
-
-        readonly property bool open: root.openPicker === kind
-        z: 7
-        visible: open
-        anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
-        anchors.right: parent.right
-        width: 300 * root.s
-        height: panel.height
-
-        // Keep layout local while drawing outside the pill's shader texture.
-        function syncOverlay() {
-            if (!overlay.parent)
-                return;
-            const point = menu.mapToItem(overlay.parent, 0, 0);
-            overlay.x = Math.max(0, Math.min(point.x, overlay.parent.width - overlay.width));
-            overlay.y = Math.max(0, Math.min(point.y, overlay.parent.height - overlay.height));
-            let alpha = 1;
-            for (let item = menu; item && item !== overlay.parent; item = item.parent) {
-                if (!item.visible) {
-                    alpha = 0;
-                    break;
-                }
-                alpha *= item.opacity;
-            }
-            overlay.opacity = alpha;
+        implicitWidth: 28 * root.s
+        implicitHeight: 28 * root.s
+        padding: 6 * root.s
+        leftPadding: padding
+        rightPadding: padding
+        enabled: count > 0
+        currentIndex: model.indexOf(current)
+        displayText: glyph
+        font.family: IconFont.name
+        font.pixelSize: 15 * root.s
+        font.features: { "liga": 1 }
+        palette.buttonText: Theme.text
+        palette.text: Theme.text
+        palette.window: Theme.base
+        palette.highlight: Theme.midlight
+        palette.highlightedText: Theme.text
+        indicator: null
+        contentItem: Label {
+            text: picker.displayText
+            font: picker.font
+            color: picker.palette.buttonText
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
-
-        onXChanged: syncOverlay()
-        onYChanged: syncOverlay()
-        onVisibleChanged: syncOverlay()
-
-        Connections {
-            target: menu.Window.window
-            enabled: menu.open
-            function onAfterAnimating() { menu.syncOverlay(); }
+        popup.width: 300 * root.s
+        popup.height: Math.min(popup.implicitHeight, 180 * root.s)
+        onActivated: (index) => pick(model[index])
+        background: Rectangle {
+            radius: 4 * root.s
+            color: picker.down ? Theme.midlight : "transparent"
+            border.width: picker.hovered || picker.visualFocus || picker.popup.visible ? 1 : 0
+            border.color: Theme.midlight
         }
-
-        Item {
-            id: overlay
-            parent: menu.Window.contentItem
-            width: menu.width
-            height: menu.height
-            z: 900
-            visible: menu.open && root.active && opacity > 0.001
-            enabled: visible
-            onParentChanged: menu.syncOverlay()
-
-            // Consume clicks in menu padding as well as on device rows.
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.AllButtons
-            }
-
-            Rectangle {
-                anchors.fill: panel
-                visible: menu.open
-                radius: panel.radius
-                color: Theme.cardBot
-                layer.enabled: true
-                layer.effect: MultiEffect {
-                    shadowEnabled: true
-                    shadowColor: Theme.shadow
-                    shadowBlur: 0.6
-                    shadowVerticalOffset: 4 * root.s
-                }
-            }
-
-            Rectangle {
-                id: panel
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: Math.min(menu.model.length * 24 * root.s + 4 * root.s, 150 * root.s)
-                clip: true
-                radius: 4 * root.s
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Theme.cardTop }
-                    GradientStop { position: 1.0; color: Theme.cardBot }
-                }
-                border.width: 1
-                border.color: Theme.frameBorder
-
-                ListView {
-                    anchors.fill: parent
-                    anchors.margins: 2 * root.s
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: menu.model
-
-                    delegate: ButtonSurface {
-                        id: devRow
-                        required property var modelData
-                        readonly property bool current: menu.current === modelData
-
-                        width: ListView.view.width
-                        height: 24 * root.s
-                        radius: 4 * root.s
-                        HoverHandler { id: devRowHover }
-
-                        Text {
-                            textFormat: Text.PlainText
-                            anchors.left: parent.left
-                            anchors.leftMargin: 9 * root.s
-                            anchors.right: parent.right
-                            anchors.rightMargin: 9 * root.s
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.deviceLabel(devRow.modelData)
-                            elide: Text.ElideRight
-                            color: devRow.current ? Theme.cream : Theme.subtle
-                            font.family: Theme.font
-                            font.pixelSize: 10.5 * root.s
-                            font.weight: devRow.current ? Font.Bold : Font.Medium
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            hoverEnabled: true
-                            onEntered: Glitch.hover(root)
-                            onClicked: { Glitch.click(root);
-                                menu.pick(devRow.modelData);
-                                root.openPicker = "";
-                            }
-                        }
-                    }
-                }
-            }
+        delegate: ItemDelegate {
+            required property var modelData
+            required property int index
+            width: picker.popup.availableWidth
+            height: 28 * root.s
+            text: root.deviceLabel(modelData)
+            font.family: root.font.family
+            font.pixelSize: 10 * root.s
+            palette.text: Theme.text
+            highlighted: picker.highlightedIndex === index
+        }
+        ToolTip.visible: hovered
+        ToolTip.text: tip + (current ? " · " + root.deviceLabel(current) : "")
+    }
+    SectionHeader {
+        id: header
+        width: parent.width
+        s: root.s
+        text: "MIXER"
+        DevicePicker {
+            id: outputPicker
+            model: root.outputSinks; current: root.sink
+            glyph: "volume_up"; tip: "Output device"
+            onPick: (node) => Pipewire.preferredDefaultAudioSink = node
+        }
+        DevicePicker {
+            id: inputPicker
+            model: root.inputSources; current: root.source
+            glyph: "mic"; tip: "Input device"
+            onPick: (node) => Pipewire.preferredDefaultAudioSource = node
         }
     }
-
-    DeviceMenu {
-        kind: "out"
-        model: root.outputSinks
-        current: root.sink
-        onPick: (node) => Pipewire.preferredDefaultAudioSink = node
-    }
-
-    DeviceMenu {
-        kind: "in"
-        model: root.inputSources
-        current: root.source
-        onPick: (node) => Pipewire.preferredDefaultAudioSource = node
-    }
-
-    Row {
-        id: faderRow
-        anchors.top: divider.bottom
-        anchors.topMargin: 10 * root.s
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 142 * root.s
-        spacing: 0
-
-        readonly property real colW: width / Math.max(1, root.faderCount)
-
-        VFader {
-            id: volFader
-            width: faderRow.colW
-            s: root.s
-            icon: "speaker"
-            subLabel: "Volume"
-            subPersistent: false
-            focused: root.focusIndex === 0
-            value: root.sink && root.sink.audio ? root.sink.audio.volume : 0
-            valueLabel: Math.round((root.sink && root.sink.audio ? root.sink.audio.volume : 0) * 100) + "%"
-            onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v; }
-        }
-
-        VFader {
-            id: micFader
-            width: faderRow.colW
-            s: root.s
-            icon: (root.source && root.source.audio && root.source.audio.muted) ? "mic-off" : "mic"
-            subLabel: "Microphone"
-            subPersistent: false
-            focused: root.focusIndex === 1
-            value: root.source && root.source.audio ? root.source.audio.volume : 0
-            valueLabel: (root.source && root.source.audio && root.source.audio.muted)
-                ? "off"
-                : (Math.round((root.source && root.source.audio ? root.source.audio.volume : 0) * 100) + "%")
-            onMoved: (v) => { if (root.source && root.source.audio) root.source.audio.volume = v; }
-
-            MouseArea {
-                anchors.bottom: parent.bottom
+    component AudioChannel: Column {
+        id: channel
+        required property var node
+        required property string title
+        required property string device
+        required property string glyph
+        required property string mutedGlyph
+        property bool showOffWhenMuted: false
+        readonly property var audio: node ? node.audio : null
+        width: faders.width / root.faderCount
+        Column {
+            width: parent.width
+            spacing: 5 * root.s
+            Slider {
+                id: slider
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 24 * root.s
-                height: 22 * root.s
-                cursorShape: Qt.PointingHandCursor
-                hoverEnabled: true
-                onEntered: Glitch.hover(root)
-                onClicked: { Glitch.click(root); if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted; }
+                height: 86 * root.s
+                from: 0; to: 1; stepSize: 0.01
+                orientation: Qt.Vertical
+                wheelEnabled: true
+                value: channel.audio ? channel.audio.volume : 0
+                onMoved: if (channel.audio) channel.audio.volume = value
+                background: Rectangle {
+                    x: (slider.width - width) / 2
+                    y: slider.topPadding
+                    width: 3 * root.s
+                    height: slider.availableHeight
+                    radius: width / 2
+                    color: Qt.alpha(Theme.text, 0.12)
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: parent.height * slider.position
+                        radius: parent.radius
+                        color: Theme.accent
+                    }
+                }
+                handle: Rectangle {
+                    x: (slider.width - width) / 2
+                    y: slider.topPadding + slider.visualPosition * (slider.availableHeight - height)
+                    width: 11 * root.s
+                    height: 5 * root.s
+                    radius: root.s
+                    color: slider.pressed || slider.visualFocus ? Theme.text : Theme.accent
+                }
             }
+            PanelLabel {
+                id: valueText
+                width: parent.width
+                text: channel.showOffWhenMuted && channel.audio && channel.audio.muted ? "off" : Math.round(slider.value * 100) + "%"
+                horizontalAlignment: Text.AlignHCenter
+                font.pixelSize: 9 * root.s
+            }
+            GlyphIcon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 16 * root.s; height: width
+                name: channel.audio && channel.audio.muted ? channel.mutedGlyph : channel.glyph
+            }
+            // Keep the existing space above the mute button.
+            Item { width: parent.width; height: valueText.implicitHeight }
+        }
+        PanelButton {
+            anchors.horizontalCenter: parent.horizontalCenter
+            s: root.s; text: channel.title
+            enabled: !!channel.audio
+            checked: enabled && channel.audio.muted
+            tip: (checked ? "Unmute " : "Mute ") + channel.device
+            onClicked: channel.audio.muted = !channel.audio.muted
         }
     }
-
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
-        property real acc: 0
-        onWheel: (event) => {
-            acc += event.angleDelta.y / 120;
-            const notches = Math.trunc(acc);
-            if (notches !== 0 && root.stepFocused(notches * 5))
-                acc -= notches;
-            event.accepted = true;
+    Row {
+        id: faders
+        anchors.top: header.bottom
+        anchors.topMargin: 10 * root.s
+        width: parent.width
+        AudioChannel {
+            node: root.sink; title: "Volume"; device: "output"
+            glyph: "volume_up"; mutedGlyph: "volume_off"
+        }
+        AudioChannel {
+            node: root.source; title: "Microphone"; device: "microphone"
+            glyph: "mic"; mutedGlyph: "mic_off"; showOffWhenMuted: true
         }
     }
 }

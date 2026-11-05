@@ -1,39 +1,27 @@
-pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls.Basic
 import "Singletons"
-import "lib/glitch.js" as Glitch
 
-
-Rectangle {
-    id: toggle
-
+Switch {
+    id: control
     property real s: 1
-    property bool on: false
-    property bool focused: false
-    signal toggled()
-
-    width: 28 * s
-    height: 16 * s
-    radius: 4 * s
-    color: on ? Theme.verm : Theme.tileBg
-    border.width: focused ? 1 : (on ? 0 : 1)
-    border.color: focused ? Qt.alpha(Theme.vermLit, 0.9) : Theme.border
-
-    Rectangle {
-        anchors.verticalCenter: parent.verticalCenter
-        width: 10 * toggle.s
-        height: 10 * toggle.s
-        radius: width / 2
-        color: Theme.cream
-        x: toggle.on ? toggle.width - width - 3 * toggle.s : 3 * toggle.s
-        Behavior on x { NumberAnimation { duration: Motion.fast } }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        cursorShape: Qt.PointingHandCursor
-        hoverEnabled: true
-        onEntered: Glitch.hover(toggle)
-        onClicked: { Glitch.click(toggle); toggle.toggled(); }
+    padding: 0
+    implicitWidth: 28 * s
+    implicitHeight: 16 * s
+    indicator: Rectangle {
+        width: control.width
+        height: control.height
+        radius: 4 * control.s
+        color: control.checked ? Theme.highlight : Theme.base
+        border.color: control.visualFocus ? Theme.text : Theme.midlight
+        Rectangle {
+            width: 10 * control.s
+            height: width
+            radius: width / 2
+            anchors.verticalCenter: parent.verticalCenter
+            x: control.checked ? parent.width - width - 3 * control.s : 3 * control.s
+            color: Theme.text
+            Behavior on x { NumberAnimation { duration: Motion.fast } }
+        }
     }
 }

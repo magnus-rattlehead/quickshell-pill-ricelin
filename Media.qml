@@ -1,24 +1,17 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import Quickshell.Widgets
 import "Singletons"
-import "lib/glitch.js" as Glitch
-
 
 PillSurface {
     id: root
+    implicitWidth: (canPick ? 460 : 390) * s
+    implicitHeight: 150 * s
 
     readonly property var player: Players.active
-    readonly property bool hasPlayer: player !== null
-    readonly property bool playing: Players.playing
-    readonly property string title: Players.has && Players.title ? Players.title : "Nothing playing"
-    readonly property string artist: Players.artist
-    readonly property bool live: Players.live
-    readonly property bool durationKnown: Players.durationKnown
-    readonly property string serviceLabel: Players.serviceLabel
-
 
     readonly property string coverSource: {
         if (!root.active)
@@ -29,27 +22,13 @@ PillSurface {
         return u.indexOf("file:") === 0 ? u + "#" + Players.trackKey : u;
     }
 
-    property bool everReady: false
-    onCoverSourceChanged: if (coverSource.length === 0) everReady = false
+    readonly property real positionSec: Players.has ? player.position : 0
+    readonly property real playFrac: Players.lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / Players.lengthSec)) : 0
 
-    readonly property real lengthSec: Players.lengthSec
-    readonly property real positionSec: hasPlayer ? player.position : 0
-    readonly property real playFrac: lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / lengthSec)) : 0
-    property real dragFrac: 0
-    property bool dragging: false
-    readonly property real frac: dragging ? dragFrac : playFrac
-
-
-    property bool picking: false
-    readonly property bool canPick: Players.pickable.length > 1
-    onActiveChanged: if (!active) picking = false
-    onCanPickChanged: if (!canPick) picking = false
-    onPickingChanged: if (picking) pickFlick.contentX = 0
+    readonly property bool canPick: Players.list.length > 1
 
     readonly property real textX: 134 * s
     readonly property real edgePad: 18 * s
-    readonly property color washMid: mix(Theme.cardTop, Theme.cardBot, 0.5)
-    property real sealPulse: 0
 
     function fmt(sec) {
         if (!(sec > 0))
@@ -60,172 +39,45 @@ PillSurface {
         return m + ":" + (ss < 10 ? "0" + ss : ss);
     }
 
-    function mix(a, b, t) {
-        return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1);
-    }
-
-    onTitleChanged: if (playing && active) pulseAnim.restart()
-
     Timer {
         interval: 500
-        running: root.active && root.playing
+        running: root.active && Players.playing && root.player.positionSupported
         repeat: true
         onTriggered: if (root.player) root.player.positionChanged();
     }
 
-    SequentialAnimation {
-        id: pulseAnim
-        NumberAnimation { target: root; property: "sealPulse"; to: 1; duration: Motion.fast; easing.type: Motion.easeStandard }
-        NumberAnimation { target: root; property: "sealPulse"; to: 0; duration: Motion.standard; easing.type: Motion.easeStandard }
-    }
-
-    component KanjiSkip: Item {
-        id: skip
-
-        property bool can: false
-        property string kanjiText: ""
-        property string icon: ""
-        signal activated()
-
+    component SkipButton: PanelButton {
+        s: root.s
+        width: 20 * root.s
+        height: 24 * root.s
+        padding: 2 * root.s
         anchors.verticalCenter: parent.verticalCenter
-        implicitWidth: Flags.showGlyphs ? kanjiLabel.implicitWidth : 15 * root.s
-        implicitHeight: Flags.showGlyphs ? kanjiLabel.implicitHeight : 15 * root.s
-        opacity: skip.can ? 1 : 0.4
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-        Text {
-            textFormat: Text.PlainText
-            id: kanjiLabel
-            visible: Flags.showGlyphs
-            anchors.centerIn: parent
-            text: skip.kanjiText
-            font.family: Theme.fontJp
-            font.pixelSize: 13 * root.s
-            color: skipArea.containsMouse ? Theme.cream : Theme.dim
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-        }
-
-        GlyphIcon {
-            visible: !Flags.showGlyphs
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: skip.icon
-            color: skipArea.containsMouse ? Theme.cream : Theme.dim
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-        }
-
-        MouseArea {
-            id: skipArea
-            anchors.fill: parent
-            anchors.margins: -6 * root.s
-            hoverEnabled: true
-            enabled: skip.can
-            cursorShape: Qt.PointingHandCursor
-            onEntered: Glitch.hover(root)
-            onClicked: { Glitch.click(root); skip.activated(); }
-        }
-    }
-
-
-    component ArtDot: ClippingRectangle {
-        id: dot
-        property string url: ""
-        radius: width / 2
-        color: Theme.tileBg
-        Image {
-            anchors.fill: parent
-            source: dot.url
-            sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            visible: status === Image.Ready
-        }
+        font.pixelSize: 13 * root.s
     }
 
     ClippingRectangle {
-        anchors.fill: parent
         radius: 11 * root.s
         color: "transparent"
-
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 118 * root.s
+        clip: true
         Image {
-            id: bleedSrc
+            id: cover
             anchors.fill: parent
             source: root.coverSource
-            sourceSize: Qt.size(128, 128)
+            sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
-            retainWhileLoading: true
             cache: String(source).indexOf("file:") !== 0
-            visible: false
         }
-
-        MultiEffect {
-            anchors.fill: parent
-            source: bleedSrc
-            scale: 1.12
-            visible: root.active && bleedSrc.status === Image.Ready
-            blurEnabled: true
-            blur: 0.95
-            blurMax: 64
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.alpha(Theme.cardTop, 0.88) }
-                GradientStop { position: 1.0; color: Qt.alpha(Theme.cardBot, 0.93) }
-            }
-        }
-
-        Item {
-            id: coverBox
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 118 * root.s
-            clip: true
-
-            Rectangle {
-                anchors.fill: parent
-                color: Theme.tileBg
-                visible: !root.everReady
-            }
-
-            Image {
-                id: cover
-                anchors.fill: parent
-                source: root.coverSource
-                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                retainWhileLoading: true
-                cache: String(source).indexOf("file:") !== 0
-                onStatusChanged: if (status === Image.Ready) root.everReady = true
-            }
-
-            GlyphIcon {
-                anchors.centerIn: parent
-                width: 40 * root.s
-                height: width
-                name: "music"
-                color: Theme.subtle
-                visible: !root.everReady
-            }
-        }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.leftMargin: 62 * root.s
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 56 * root.s
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.alpha(root.washMid, 0) }
-                GradientStop { position: 0.7; color: Qt.alpha(root.washMid, 0.8) }
-                GradientStop { position: 1.0; color: root.washMid }
-            }
+        GlyphIcon {
+            anchors.centerIn: parent
+            width: 40 * root.s; height: width
+            name: "music_note"
+            color: Theme.light
+            visible: cover.status !== Image.Ready
         }
     }
 
@@ -238,218 +90,91 @@ PillSurface {
         anchors.topMargin: 24 * root.s
         spacing: 3 * root.s
 
-        Marquee {
+        PanelLabel {
+            id: titleLabel
             anchors.left: parent.left
             anchors.right: parent.right
-            text: root.title
-            color: Theme.cream
-            pixelSize: 17 * root.s
-            weight: Font.DemiBold
-            active: root.active
+            text: Players.title || "Nothing playing"
+            font.pixelSize: 17 * root.s
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+            HoverHandler { id: titleHover }
+            ToolTip.visible: titleHover.hovered && titleLabel.truncated
+            ToolTip.text: text
         }
-        Marquee {
+        PanelLabel {
+            id: artistLabel
             anchors.left: parent.left
             anchors.right: parent.right
-            text: root.artist
-            color: Theme.dim
-            pixelSize: 11.5 * root.s
-            active: root.active
+            text: Players.artist
+            color: Theme.placeholderText
+            font.pixelSize: 11.5 * root.s
+            elide: Text.ElideRight
+            HoverHandler { id: artistHover }
+            ToolTip.visible: artistHover.hovered && artistLabel.truncated
+            ToolTip.text: text
             visible: text.length > 0
         }
     }
 
-    Item {
+    RowLayout {
         id: srcLine
         anchors.left: parent.left
         anchors.leftMargin: root.textX
-        anchors.right: root.picking ? parent.right : transport.left
-        anchors.rightMargin: root.picking ? root.edgePad : 10 * root.s
+        anchors.right: transport.left
+        anchors.rightMargin: 10 * root.s
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 36 * root.s
         height: 34 * root.s
+        spacing: 3 * root.s
 
-        readonly property string tail: !root.hasPlayer ? ""
-            : root.live
-            ? " - Live"
-            : root.durationKnown
-            ? " / " + root.fmt(root.dragging ? root.dragFrac * root.lengthSec : root.positionSec)
-                + " - " + root.fmt(root.lengthSec)
-            : " / " + root.fmt(root.positionSec)
-
-        Item {
-            id: infoRow
-            anchors.fill: parent
-            visible: opacity > 0.01
-            opacity: root.picking ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-            Text {
-                textFormat: Text.PlainText
-                id: plainSource
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.canPick && root.serviceLabel.length > 0
-                text: root.serviceLabel
-                color: Theme.dim
-                font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-            }
-
-            Rectangle {
-                id: srcBubble
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                visible: root.canPick
-                height: 18 * root.s
-                width: bubbleRow.width + 14 * root.s
+        ComboBox {
+            id: playerPicker
+            visible: root.canPick
+            Layout.maximumWidth: 120 * root.s
+            Layout.preferredHeight: 24 * root.s
+            model: Players.list
+            currentIndex: Players.list.indexOf(root.player)
+            displayText: Players.serviceLabel
+            font.pixelSize: 10 * root.s
+            palette.buttonText: Theme.text
+            palette.text: Theme.text
+            palette.window: Theme.base
+            hoverEnabled: true
+            onActivated: (index) => Players.select(model[index])
+            background: Rectangle {
                 radius: height / 2
-                color: Qt.alpha(Theme.verm, 0.16)
+                color: Qt.alpha(Theme.highlight, 0.16)
                 border.width: 1
-                border.color: Qt.alpha(Theme.vermLit, 0.45 + 0.35 * glow)
-
-                property real glow: 0
-                SequentialAnimation on glow {
-                    running: srcBubble.visible && !root.picking
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 1; duration: 1300; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 0; duration: 1300; easing.type: Easing.InOutSine }
-                }
-
-                Row {
-                    id: bubbleRow
-                    anchors.centerIn: parent
-                    spacing: 5 * root.s
-                    ArtDot {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 12 * root.s
-                        height: 12 * root.s
-                        url: Players.artUrlFor(root.player)
-                    }
-                    Text {
-                        textFormat: Text.PlainText
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.serviceLabel
-                        color: Theme.cream
-                        font.family: Theme.font
-                        font.pixelSize: 10 * root.s
-                        font.weight: Font.DemiBold
-                    }
-                    Text {
-                        textFormat: Text.PlainText
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "▾"
-                        color: Theme.vermLit
-                        font.pixelSize: 8 * root.s
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -5 * root.s
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onEntered: Glitch.hover(root)
-                    onClicked: { Glitch.click(root); root.picking = true; }
-                }
+                border.color: Theme.midlight
             }
-
-            Text {
-                textFormat: Text.PlainText
-                anchors.left: root.canPick ? srcBubble.right : plainSource.right
-                anchors.leftMargin: 3 * root.s
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: srcLine.tail
-                elide: Text.ElideRight
-                color: Theme.dim
-                font.family: Theme.font
-                font.pixelSize: 9.5 * root.s
-                font.features: { "tnum": 1 }
+            popup.width: 260 * root.s
+            delegate: SettingRow {
+                required property var modelData
+                width: playerPicker.popup.availableWidth
+                height: 42 * root.s; s: root.s
+                text: Players.labelOf(modelData)
+                subtitle: modelData.trackTitle || ""
+                highlighted: modelData === root.player
             }
+            ToolTip.visible: hovered
+            ToolTip.text: "Choose media player"
         }
-
-        Flickable {
-            id: pickFlick
-            anchors.fill: parent
-            clip: true
-            visible: opacity > 0.01
-            opacity: root.picking ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-            contentWidth: pickRow.width
-            contentHeight: height
-            flickableDirection: Flickable.HorizontalFlick
-            boundsBehavior: Flickable.StopAtBounds
-
-            WheelHandler {
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                onWheel: (e) => {
-                    var step = e.angleDelta.y !== 0 ? e.angleDelta.y : e.angleDelta.x;
-                    var max = Math.max(0, pickFlick.contentWidth - pickFlick.width);
-                    pickFlick.contentX = Math.max(0, Math.min(max, pickFlick.contentX - step));
-                }
-            }
-
-            Row {
-                id: pickRow
-                height: pickFlick.height
-                spacing: 7 * root.s
-
-                Repeater {
-                    model: root.picking ? Players.pickable : []
-                    delegate: ButtonSurface {
-                        id: bub
-                        required property var modelData
-                        readonly property bool isActive: modelData === Players.active
-                        anchors.verticalCenter: parent.verticalCenter
-                        height: 32 * root.s
-                        width: bubInner.width + 18 * root.s
-                        radius: 6 * root.s
-                        Row {
-                            id: bubInner
-                            anchors.centerIn: parent
-                            spacing: 7 * root.s
-                            ArtDot {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 16 * root.s
-                                height: 16 * root.s
-                                url: Players.artUrlFor(bub.modelData)
-                            }
-                            Column {
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 0
-                                Text {
-                                    textFormat: Text.PlainText
-                                    text: Players.labelOf(bub.modelData)
-                                    color: bub.isActive ? Theme.bright : Theme.dim
-                                    font.family: Theme.font
-                                    font.pixelSize: 11 * root.s
-                                    font.weight: Font.DemiBold
-                                }
-                                Text {
-                                    textFormat: Text.PlainText
-                                    text: Players.nowPlayingFor(bub.modelData)
-                                    color: bub.isActive ? Theme.subtle : Theme.faint
-                                    font.family: Theme.font
-                                    font.pixelSize: 8.5 * root.s
-                                    elide: Text.ElideRight
-                                    width: Math.min(implicitWidth, 150 * root.s)
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: Glitch.hover(root)
-                            onClicked: { Glitch.click(root);
-                                Players.select(bub.modelData);
-                                root.picking = false;
-                            }
-                        }
-                    }
-                }
-            }
+        PanelLabel {
+            visible: !root.canPick && text.length > 0
+            text: Players.serviceLabel
+            color: Theme.placeholderText
+            font.pixelSize: 9.5 * root.s
+        }
+        PanelLabel {
+            Layout.fillWidth: true
+            text: !Players.has ? "" : Players.durationKnown
+                ? " / " + root.fmt(seek.pressed ? seek.position * Players.lengthSec : root.positionSec) + " - " + root.fmt(Players.lengthSec)
+                : " / " + root.fmt(root.positionSec)
+            elide: Text.ElideRight
+            color: Theme.placeholderText
+            font.pixelSize: 9.5 * root.s
+            font.features: { "tnum": 1 }
         }
     }
 
@@ -460,72 +185,33 @@ PillSurface {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 38 * root.s
         spacing: 14 * root.s
-        opacity: root.picking ? 0 : 1
-        enabled: !root.picking
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
-        KanjiSkip {
-            kanjiText: "前"
-            icon: "prev"
-            can: root.hasPlayer && root.player.canGoPrevious
-            onActivated: if (root.player) root.player.previous()
+        SkipButton {
+            glyph: "skip_previous"
+            enabled: Players.has && root.player.canGoPrevious
+            onClicked: if (root.player) root.player.previous()
         }
 
-        ButtonSurface {
-            id: seal
+        PanelButton {
             anchors.verticalCenter: parent.verticalCenter
+            s: root.s
             width: 30 * root.s
             height: 30 * root.s
-            radius: 4 * root.s
-            property real sat: root.playing ? 1 : 0
-            Behavior on sat { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-
-            opacity: (sealArea.enabled ? 1 : 0.4) * (0.75 + 0.25 * sat)
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-
-
-            Text {
-                textFormat: Text.PlainText
-                visible: Flags.showGlyphs
-                anchors.centerIn: parent
-                text: root.playing ? "奏" : "休"
-                color: Theme.bright
-                font.family: Theme.fontJp
-                font.pixelSize: 16 * root.s
-                font.weight: Font.DemiBold
-            }
-
-            GlyphIcon {
-                visible: !Flags.showGlyphs
-                anchors.centerIn: parent
-                width: 15 * root.s
-                height: 15 * root.s
-                name: root.playing ? "pause" : "play"
-                color: Theme.bright
-            }
-
-            MouseArea {
-                id: sealArea
-                anchors.fill: parent
-                anchors.margins: -4 * root.s
-                hoverEnabled: true
-                enabled: root.hasPlayer && root.player.canTogglePlaying
-                cursorShape: Qt.PointingHandCursor
-                onEntered: Glitch.hover(root)
-                onClicked: { Glitch.click(root); if (root.player) root.player.togglePlaying(); }
-            }
+            enabled: Players.has && root.player.canTogglePlaying
+            glyph: Players.playing ? "pause" : "play_arrow"
+            font.pixelSize: 16 * root.s
+            onClicked: if (root.player) root.player.togglePlaying()
         }
 
-        KanjiSkip {
-            kanjiText: "次"
-            icon: "next"
-            can: root.hasPlayer && root.player.canGoNext
-            onActivated: if (root.player) root.player.next()
+        SkipButton {
+            glyph: "skip_next"
+            enabled: Players.has && root.player.canGoNext
+            onClicked: if (root.player) root.player.next()
         }
     }
 
-    Canvas {
-        id: stroke
+    Slider {
+        id: seek
         anchors.left: parent.left
         anchors.leftMargin: root.textX
         anchors.right: parent.right
@@ -533,87 +219,31 @@ PillSurface {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 10 * root.s
         height: 18 * root.s
-
-        readonly property real inset: 3 * root.s
-        readonly property real usable: Math.max(1, width - 2 * inset)
-        property real targetF: root.frac
-        property real lastFrac: 0
-        property real drawF: targetF
-        readonly property real headX: inset + drawF * usable
-        readonly property real headY: waveY(drawF)
-
-        Behavior on drawF {
-            enabled: Math.abs(root.frac - stroke.lastFrac) < 0.02
-            NumberAnimation { duration: 500; easing.type: Easing.Linear }
+        from: 0; to: 1; stepSize: 0.01
+        value: root.playFrac
+        enabled: Players.has && root.player.canSeek && root.player.positionSupported && Players.durationKnown
+        property var dragPlayer: null
+        property string dragTrack: ""
+        onPressedChanged: {
+            if (pressed) { dragPlayer = root.player; dragTrack = Players.trackKey; }
+            else if (enabled && root.player === dragPlayer && Players.trackKey === dragTrack)
+                root.player.position = value * Players.lengthSec;
         }
-        onTargetFChanged: Qt.callLater(() => { stroke.lastFrac = root.frac; })
-
-        onDrawFChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        onVisibleChanged: if (visible) requestPaint()
-
-        function waveY(u) {
-            return height / 2 - 2.6 * Math.sin(3 * Math.PI * u) * Math.exp(-2.5 * u) * root.s;
+        onMoved: if (!pressed && enabled) root.player.position = value * Players.lengthSec
+        background: Rectangle {
+            x: seek.leftPadding
+            y: (seek.height - height) / 2
+            width: seek.availableWidth
+            height: 3 * root.s
+            radius: height / 2
+            color: Theme.midlight
+            Rectangle { width: parent.width * seek.position; height: parent.height; radius: parent.radius; color: Theme.accent }
         }
-
-        onPaint: {
-            const ctx = getContext("2d");
-            ctx.reset();
-            if (width <= 0 || height <= 0)
-                return;
-            const n = 48;
-            ctx.strokeStyle = Theme.border;
-            ctx.lineWidth = 2.5 * root.s;
-            ctx.lineCap = "round";
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            ctx.moveTo(inset, waveY(0));
-            for (let i = 1; i <= n; i++)
-                ctx.lineTo(inset + (i / n) * usable, waveY(i / n));
-            ctx.stroke();
-
-            if (drawF <= 0.002)
-                return;
-            const hTail = 2.5 * root.s;
-            const hHead = 1.75 * root.s;
-            const m = Math.max(2, Math.ceil(n * drawF));
-            ctx.fillStyle = Theme.verm;
-            ctx.beginPath();
-            ctx.arc(inset, waveY(0), hTail, Math.PI / 2, 3 * Math.PI / 2);
-            for (let i = 0; i <= m; i++) {
-                const u = (i / m) * drawF;
-                ctx.lineTo(inset + u * usable, waveY(u) - (hTail + (hHead - hTail) * (i / m)));
-            }
-            ctx.arc(headX, headY, hHead, -Math.PI / 2, Math.PI / 2);
-            for (let i = m; i >= 0; i--) {
-                const u = (i / m) * drawF;
-                ctx.lineTo(inset + u * usable, waveY(u) + (hTail + (hHead - hTail) * (i / m)));
-            }
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        MouseArea {
-            id: seekArea
-            anchors.fill: parent
-            anchors.margins: -8 * root.s
-            enabled: root.hasPlayer && root.player.canSeek && root.player.positionSupported && root.lengthSec > 0 && !root.live
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onEntered: Glitch.hover(root)
-            function fracAt(mx) {
-                return Math.max(0, Math.min(1, (mx - 8 * root.s - stroke.inset) / stroke.usable));
-            }
-            onPressed: (e) => {
-                root.dragFrac = fracAt(e.x);
-                root.dragging = true;
-            }
-            onPositionChanged: (e) => { if (pressed) root.dragFrac = fracAt(e.x); }
-            onReleased: {
-                if (root.player)
-                    root.player.position = root.dragFrac * root.lengthSec;
-                root.dragging = false;
-            }
+        handle: Rectangle {
+            x: seek.leftPadding + seek.visualPosition * (seek.availableWidth - width)
+            y: (seek.height - height) / 2
+            width: 7 * root.s; height: width; radius: width / 2
+            color: seek.pressed || seek.visualFocus ? Theme.text : Theme.accent
         }
     }
 }

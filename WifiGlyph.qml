@@ -1,90 +1,13 @@
 import QtQuick
-import QtQuick.Shapes
-import "Singletons"
 
-
-Item {
-    id: root
-
+GlyphIcon {
     property real s: 1
     property real level: 0
     property bool on: true
-    property color litColor: Theme.iconDim
-
-    implicitWidth: 17 * s
-    implicitHeight: 17 * s
-
-    readonly property int litCount: !on ? 0 : (level > 0.66 ? 3 : (level > 0.33 ? 2 : (level > 0 ? 1 : 0)))
-    readonly property color offColor: on ? Qt.alpha(Theme.iconDim, 0.4) : Qt.alpha(Theme.iconDim, 0.18)
-
-    readonly property real u: Math.min(width, height) / 24
-
-    readonly property real glyphX: arcs.boundingRect.width > 0
-        ? root.width / 2 - (arcs.boundingRect.x + arcs.boundingRect.width / 2) * root.u
-        : (root.width - 24 * root.u) / 2
-    readonly property real glyphY: arcs.boundingRect.height > 0
-        ? root.height / 2 - (arcs.boundingRect.y + arcs.boundingRect.height / 2) * root.u
-        : (root.height - 24 * root.u) / 2
-
-    Shape {
-        id: arcs
-
-        width: 24
-        height: 24
-        scale: root.u
-        transformOrigin: Item.TopLeft
-        x: root.glyphX
-        y: root.glyphY
-        antialiasing: true
-        preferredRendererType: Shape.CurveRenderer
-
-        ShapePath {
-            strokeColor: root.litCount >= 1 ? root.litColor : root.offColor
-            fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
-            capStyle: ShapePath.RoundCap
-            PathSvg { path: "M9.17 13.17 A4 4 0 0 1 14.83 13.17" }
-        }
-        ShapePath {
-            strokeColor: root.litCount >= 2 ? root.litColor : root.offColor
-            fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
-            capStyle: ShapePath.RoundCap
-            PathSvg { path: "M6.34 10.34 A8 8 0 0 1 17.66 10.34" }
-        }
-        ShapePath {
-            strokeColor: root.litCount >= 3 ? root.litColor : root.offColor
-            fillColor: "transparent"
-            strokeWidth: (2 / root.u) * root.s
-            capStyle: ShapePath.RoundCap
-            PathSvg { path: "M3.5 7.5 A12 12 0 0 1 20.5 7.5" }
-        }
-        ShapePath {
-            strokeColor: "transparent"
-            fillColor: root.litCount >= 1 ? root.litColor : root.offColor
-            PathSvg { path: "M12 14.1 A1.5 1.5 0 0 1 12 17.1 A1.5 1.5 0 0 1 12 14.1z" }
-        }
-    }
-
-    Shape {
-        id: slash
-
-        width: 24
-        height: 24
-        scale: root.u
-        transformOrigin: Item.TopLeft
-        x: root.glyphX
-        y: root.glyphY
-        visible: !root.on
-        antialiasing: true
-        preferredRendererType: Shape.CurveRenderer
-
-        ShapePath {
-            strokeColor: Theme.faint
-            fillColor: "transparent"
-            strokeWidth: (1.7 / root.u) * root.s
-            capStyle: ShapePath.RoundCap
-            PathSvg { path: "M4 3 L20 19" }
-        }
-    }
+    property color litColor: palette.highlight
+    width: 17 * s
+    height: 17 * s
+    name: !on ? "wifi_off" : level > 0.66 ? "signal_wifi_4_bar"
+        : level > 0.33 ? "network_wifi_2_bar" : level > 0 ? "network_wifi_1_bar" : "signal_wifi_0_bar"
+    color: on ? litColor : palette.mid
 }
