@@ -116,36 +116,13 @@ PillSurface {
             Slider {
                 id: slider
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 24 * root.s
+                width: Math.max(implicitWidth, 24 * root.s)
                 height: 86 * root.s
                 from: 0; to: 1; stepSize: 0.01
                 orientation: Qt.Vertical
                 wheelEnabled: true
                 value: channel.audio ? channel.audio.volume : 0
                 onMoved: if (channel.audio) channel.audio.volume = value
-                background: Rectangle {
-                    x: (slider.width - width) / 2
-                    y: slider.topPadding
-                    width: 3 * root.s
-                    height: slider.availableHeight
-                    radius: width / 2
-                    color: Qt.alpha(Theme.text, 0.12)
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: parent.height * slider.position
-                        radius: parent.radius
-                        color: Theme.accent
-                    }
-                }
-                handle: Rectangle {
-                    x: (slider.width - width) / 2
-                    y: slider.topPadding + slider.visualPosition * (slider.availableHeight - height)
-                    width: 11 * root.s
-                    height: 5 * root.s
-                    radius: root.s
-                    color: slider.pressed || slider.visualFocus ? Theme.text : Theme.accent
-                }
             }
             PanelLabel {
                 id: valueText

@@ -9,8 +9,8 @@ Singleton {
     readonly property string font: defaultFont.font.family
     FontMetrics { id: defaultFont }
     readonly property string locale: Qt.locale().name
-    // Match the previous size on a 1440p display without depending on resolution.
-    readonly property real baseScale: 4 / 3
+    // Global size for the pill, fonts, icons, and spacing.
+    readonly property real baseScale: 1.5
     readonly property string timeFormat: "hh:mm"
     readonly property string timeFormatSeconds: "hh:mm:ss"
 

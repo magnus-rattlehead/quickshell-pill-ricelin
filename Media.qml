@@ -9,7 +9,7 @@ import "Singletons"
 PillSurface {
     id: root
     implicitWidth: (canPick ? 460 : 390) * s
-    implicitHeight: 150 * s
+    implicitHeight: 150 * s + Math.max(0, seek.implicitHeight - 18 * s)
 
     readonly property var player: Players.active
 
@@ -124,7 +124,7 @@ PillSurface {
         anchors.right: transport.left
         anchors.rightMargin: 10 * root.s
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 36 * root.s
+        anchors.bottomMargin: seek.height + 18 * root.s
         height: 34 * root.s
         spacing: 3 * root.s
 
@@ -183,7 +183,7 @@ PillSurface {
         anchors.right: parent.right
         anchors.rightMargin: root.edgePad
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 38 * root.s
+        anchors.bottomMargin: seek.height + 20 * root.s
         spacing: 14 * root.s
 
         SkipButton {
@@ -218,7 +218,7 @@ PillSurface {
         anchors.rightMargin: root.edgePad
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 10 * root.s
-        height: 18 * root.s
+        height: Math.max(implicitHeight, 18 * root.s)
         from: 0; to: 1; stepSize: 0.01
         value: root.playFrac
         enabled: Players.has && root.player.canSeek && root.player.positionSupported && Players.durationKnown
@@ -230,20 +230,5 @@ PillSurface {
                 root.player.position = value * Players.lengthSec;
         }
         onMoved: if (!pressed && enabled) root.player.position = value * Players.lengthSec
-        background: Rectangle {
-            x: seek.leftPadding
-            y: (seek.height - height) / 2
-            width: seek.availableWidth
-            height: 3 * root.s
-            radius: height / 2
-            color: Theme.midlight
-            Rectangle { width: parent.width * seek.position; height: parent.height; radius: parent.radius; color: Theme.accent }
-        }
-        handle: Rectangle {
-            x: seek.leftPadding + seek.visualPosition * (seek.availableWidth - width)
-            y: (seek.height - height) / 2
-            width: 7 * root.s; height: width; radius: width / 2
-            color: seek.pressed || seek.visualFocus ? Theme.text : Theme.accent
-        }
     }
 }

@@ -215,7 +215,7 @@ Control {
                 }
 
                 PillIcon {
-                    glyph: "tune"
+                    glyph: "graphic_eq"
                     tip: "Mixer"
                     onClicked: { pill.requestSurface("mixer"); }
                 }
