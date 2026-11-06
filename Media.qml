@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import Quickshell.Widgets
 import "Singletons"
 
 PillSurface {
@@ -13,16 +12,8 @@ PillSurface {
 
     readonly property var player: Players.active
 
-    readonly property string coverSource: {
-        if (!root.active)
-            return "";
-        var u = Players.artUrl;
-        if (!u)
-            return "";
-        return u.indexOf("file:") === 0 ? u + "#" + Players.trackKey : u;
-    }
-
-    readonly property real positionSec: Players.has ? player.position : 0
+    readonly property bool positionKnown: !!player && player.positionSupported
+    readonly property real positionSec: player && player.positionSupported ? Math.max(0, player.position) : 0
     readonly property real playFrac: Players.lengthSec > 0 ? Math.max(0, Math.min(1, positionSec / Players.lengthSec)) : 0
 
     readonly property bool canPick: Players.list.length > 1
@@ -39,11 +30,11 @@ PillSurface {
         return m + ":" + (ss < 10 ? "0" + ss : ss);
     }
 
-    Timer {
-        interval: 500
-        running: root.active && Players.playing && root.player.positionSupported
-        repeat: true
-        onTriggered: if (root.player) root.player.positionChanged();
+    onActiveChanged: if (active && player) player.positionChanged()
+
+    FrameAnimation {
+        running: root.active && Players.playing && root.positionKnown
+        onTriggered: root.player.positionChanged()
     }
 
     component SkipButton: PanelButton {
@@ -55,29 +46,16 @@ PillSurface {
         font.pixelSize: 13 * root.s
     }
 
-    ClippingRectangle {
-        radius: 11 * root.s
-        color: "transparent"
+    Item {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 118 * root.s
-        clip: true
-        Image {
-            id: cover
+        AudioVisualizer {
             anchors.fill: parent
-            source: root.coverSource
-            sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            cache: String(source).indexOf("file:") !== 0
-        }
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 40 * root.s; height: width
-            name: "music_note"
-            color: Theme.light
-            visible: cover.status !== Image.Ready
+            anchors.margins: 16 * root.s
+            s: root.s
+            active: root.active && Players.playing
         }
     }
 
@@ -168,9 +146,10 @@ PillSurface {
         }
         PanelLabel {
             Layout.fillWidth: true
-            text: !Players.has ? "" : Players.durationKnown
-                ? " / " + root.fmt(seek.pressed ? seek.position * Players.lengthSec : root.positionSec) + " - " + root.fmt(Players.lengthSec)
-                : " / " + root.fmt(root.positionSec)
+            text: !Players.has ? "" : !Players.durationKnown
+                ? " / Duration unavailable"
+                : !root.positionKnown ? " / " + root.fmt(Players.lengthSec)
+                : " / " + root.fmt(seek.pressed ? seek.position * Players.lengthSec : root.positionSec) + " - " + root.fmt(Players.lengthSec)
             elide: Text.ElideRight
             color: Theme.placeholderText
             font.pixelSize: 9.5 * root.s
@@ -188,7 +167,7 @@ PillSurface {
 
         SkipButton {
             glyph: "skip_previous"
-            enabled: Players.has && root.player.canGoPrevious
+            enabled: !!root.player && root.player.canGoPrevious
             onClicked: if (root.player) root.player.previous()
         }
 
@@ -197,7 +176,7 @@ PillSurface {
             s: root.s
             width: 30 * root.s
             height: 30 * root.s
-            enabled: Players.has && root.player.canTogglePlaying
+            enabled: !!root.player && root.player.canTogglePlaying
             glyph: Players.playing ? "pause" : "play_arrow"
             font.pixelSize: 16 * root.s
             onClicked: if (root.player) root.player.togglePlaying()
@@ -205,7 +184,7 @@ PillSurface {
 
         SkipButton {
             glyph: "skip_next"
-            enabled: Players.has && root.player.canGoNext
+            enabled: !!root.player && root.player.canGoNext
             onClicked: if (root.player) root.player.next()
         }
     }
@@ -219,15 +198,29 @@ PillSurface {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 10 * root.s
         height: Math.max(implicitHeight, 18 * root.s)
-        from: 0; to: 1; stepSize: 0.01
-        value: root.playFrac
-        enabled: Players.has && root.player.canSeek && root.player.positionSupported && Players.durationKnown
+        from: 0; to: 1
+        stepSize: Players.durationKnown ? 1 / Players.lengthSec : 0
+        live: false
+        visible: root.positionKnown && Players.durationKnown
+        enabled: visible && !!root.player && root.player.canSeek
         property var dragPlayer: null
         property string dragTrack: ""
+        // Suspend playback updates until the drag has been committed.
+        Binding {
+            target: seek
+            property: "value"
+            value: root.playFrac
+            when: !seek.pressed && seek.dragPlayer === null
+            restoreMode: Binding.RestoreNone
+        }
         onPressedChanged: {
             if (pressed) { dragPlayer = root.player; dragTrack = Players.trackKey; }
-            else if (enabled && root.player === dragPlayer && Players.trackKey === dragTrack)
-                root.player.position = value * Players.lengthSec;
+            else {
+                if (enabled && root.player === dragPlayer && Players.trackKey === dragTrack)
+                    root.player.position = value * Players.lengthSec;
+                dragPlayer = null;
+                dragTrack = "";
+            }
         }
         onMoved: if (!pressed && enabled) root.player.position = value * Players.lengthSec
     }

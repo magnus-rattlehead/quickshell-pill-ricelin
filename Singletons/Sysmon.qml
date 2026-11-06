@@ -37,7 +37,7 @@ Singleton {
         prevNetTime = 0;
         sampleFast();
         sampleSlow();
-        if (!sensorsProc.running) sensorsProc.running = true;
+        if (!cpuTempProc.running) cpuTempProc.running = true;
     }
 
     function fmtUptime(sec) {
@@ -91,18 +91,19 @@ Singleton {
     }
 
     Process {
-        id: sensorsProc
-        command: ["timeout", "--kill-after=1s", "2s", "sensors", "-j"]
-        stdout: StdioCollector { id: sensorsOutput }
+        id: cpuTempProc
+        command: ["timeout", "--kill-after=1s", "2s", "fastfetch",
+            "--config", Quickshell.shellPath("lib/fastfetch-cpu.jsonc"), "--format", "json"]
+        stdout: StdioCollector { id: cpuTempOutput }
         stderr: SplitParser {}
-        onExited: root.cpuTemp = root.cpuTemperature(sensorsOutput.text)
+        onExited: (code) => root.cpuTemp = code === 0 ? root.cpuTemperature(cpuTempOutput.text) : -1
     }
 
     Timer {
         interval: 2000
         running: root.open
         repeat: true
-        onTriggered: if (!sensorsProc.running) sensorsProc.running = true
+        onTriggered: if (!cpuTempProc.running) cpuTempProc.running = true
     }
 
     // Read kernel counters directly; no shell or awk processes per sample.
@@ -255,23 +256,11 @@ Singleton {
     }
 
     function cpuTemperature(text) {
-        var chips;
-        try { chips = JSON.parse(text); } catch (_) { return -1; }
-        if (!chips || typeof chips !== "object" || Array.isArray(chips)) return -1;
-        var labels = ["Tdie", "Package id 0", "Tctl", "temp1"];
-        for (var i = 0; i < labels.length; i++) {
-            for (var chip in chips) {
-                if (!/^(k10temp|coretemp|zenpower|cpu_thermal|acpitz)[-]/.test(chip)) continue;
-                var sensor = chips[chip] && chips[chip][labels[i]];
-                if (!sensor || typeof sensor !== "object") continue;
-                for (var key in sensor) {
-                    var value = sensor[key];
-                    if (/^temp\d+_input$/.test(key) && typeof value === "number"
-                            && isFinite(value) && value >= 0 && value <= 200)
-                        return Math.round(value);
-                }
-            }
-        }
-        return -1;
+        var modules;
+        try { modules = JSON.parse(text); } catch (_) { return -1; }
+        if (!Array.isArray(modules)) return -1;
+        var value = modules.find(m => m && m.type === "CPU")?.result?.temperature;
+        return typeof value === "number" && isFinite(value) && value >= 0 && value <= 200
+            ? Math.round(value) : -1;
     }
 }

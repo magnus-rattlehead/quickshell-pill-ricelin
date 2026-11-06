@@ -5,6 +5,7 @@ singleton Notifs Notifs.qml
 singleton Sysmon Sysmon.qml
 singleton Config Config.qml
 singleton Players Players.qml
+singleton Cava Cava.qml
 singleton Cliphist Cliphist.qml
 singleton NetworkState NetworkState.qml
 singleton IconFont IconFont.qml

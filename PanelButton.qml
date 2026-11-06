@@ -14,9 +14,9 @@ Button {
     implicitWidth: Math.max(28 * s, implicitContentWidth + leftPadding + rightPadding)
     hoverEnabled: true
     opacity: enabled ? 1 : 0.4
-    font: glyph.length
-        ? Qt.font({ family: IconFont.name, pixelSize: 15 * s, features: { "liga": 1 } })
-        : Qt.font({ pixelSize: 10 * s })
+    font.family: glyph.length ? IconFont.name : Qt.font({}).family
+    font.pixelSize: (glyph.length ? 15 : 10) * s
+    font.features: glyph.length ? { "liga": 1 } : {}
     palette.buttonText: Theme.text
     palette.brightText: Theme.text
     palette.windowText: Theme.text

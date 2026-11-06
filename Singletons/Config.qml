@@ -25,7 +25,4 @@ Singleton {
     readonly property list<string> suspendCommand: ["loginctl", "suspend"]
     readonly property list<string> rebootCommand: ["loginctl", "reboot"]
     readonly property list<string> shutdownCommand: ["loginctl", "poweroff"]
-    // The Wayland idle inhibitor also runs; this command additionally blocks sleep.
-    readonly property list<string> inhibitCommand: ["systemd-inhibit", "--what=idle:sleep",
-        "--who=Quickshell pill", "--why=keep awake", "--mode=block", "sleep", "infinity"]
 }

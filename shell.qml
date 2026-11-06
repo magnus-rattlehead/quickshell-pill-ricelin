@@ -14,6 +14,13 @@ ShellRoot {
     property string openMon: ""
     property string openSurface: ""
 
+    // Prepare spectrum data before the media panel opens.
+    Binding {
+        target: Cava
+        property: "playbackActive"
+        value: Players.playing
+    }
+
     PanelWindow {
         id: inhibitWin
         visible: Flags.keepAwake
@@ -26,11 +33,6 @@ ShellRoot {
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         anchors { top: true; left: true }
         IdleInhibitor { window: inhibitWin; enabled: Flags.keepAwake }
-    }
-
-    Process {
-        running: Flags.keepAwake && Config.inhibitCommand.length > 0
-        command: Config.inhibitCommand
     }
 
     Connections {

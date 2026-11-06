@@ -28,7 +28,7 @@ PillSurface {
         s: root.s
         text: "POWER"
         PanelButton {
-            s: root.s; glyph: "visibility"; tip: "Keep awake · Block sleep and screen-off"
+            s: root.s; glyph: "visibility"; tip: "Keep awake · Prevent idle"
             checked: Flags.keepAwake
             onClicked: Flags.keepAwake = !Flags.keepAwake
         }
