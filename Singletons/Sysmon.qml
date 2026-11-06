@@ -50,12 +50,13 @@ Singleton {
     }
 
     function sampleGpus() {
-        if (!gpuProc.running) gpuProc.running = true;
+        if (open && !gpuProc.running) gpuProc.running = true;
     }
 
     onOpenChanged: {
         gpuGeneration++;
         if (open) {
+            gpus = gpus.map(unavailableGpu);
             primeAll();
             sampleGpus();
         } else if (gpuProc.running) {
@@ -64,30 +65,67 @@ Singleton {
     }
 
     property int gpuGeneration: 0
+    property string gpuFrame: ""
+    property real lastGpuUpdate: 0
+
+    function acceptGpuLine(line) {
+        // NVTOP prints each sample as a JSON array. Only the outer brackets
+        // are unindented
+        if (line === "[") gpuFrame = "[";
+        else if (gpuFrame.length > 0) gpuFrame += "\n" + line;
+        if (line !== "]" || gpuFrame.length === 0) return;
+        var next = gpuSnapshot(gpuFrame);
+        gpuFrame = "";
+        if (next === null) {
+            gpus = gpus.map(unavailableGpu);
+            return;
+        }
+        lastGpuUpdate = Date.now();
+        gpus = next;
+    }
+
     Process {
         id: gpuProc
         property int generation: -1
-        command: ["timeout", "--kill-after=1s", "2s", "nvtop", "--snapshot"]
-        onStarted: generation = root.gpuGeneration
-        stdout: StdioCollector { id: gpuOutput }
+        command: ["nvtop", "--loop", "--delay", "10"]
+        onStarted: {
+            generation = root.gpuGeneration;
+            root.gpuFrame = "";
+            root.lastGpuUpdate = Date.now();
+        }
+        stdout: SplitParser {
+            onRead: data => {
+                if (root.open && gpuProc.generation === root.gpuGeneration)
+                    root.acceptGpuLine(data);
+            }
+        }
         stderr: SplitParser {}
-        onExited: (code) => {
+        onExited: {
             if (generation !== root.gpuGeneration) {
                 if (root.open) Qt.callLater(root.sampleGpus);
                 return;
             }
             if (!root.open) return;
-            var next = code === 0 ? root.gpuSnapshot(gpuOutput.text) : null;
-            // Keep device labels visible on a failed sample, but clear old readings.
-            root.gpus = next !== null ? next : root.gpus.map(root.unavailableGpu);
+            // Keep labels visible until the recovery timer starts a new reader.
+            root.gpus = root.gpus.map(root.unavailableGpu);
         }
     }
 
     Timer {
         interval: 1000
-        running: root.open
+        running: root.open || gpuProc.running
         repeat: true
-        onTriggered: root.sampleGpus()
+        onTriggered: {
+            if (!gpuProc.running) {
+                root.sampleGpus();
+            } else if (gpuProc.generation !== root.gpuGeneration) {
+                // Finish shutting down a reader from a previous panel opening.
+                gpuProc.signal(9);
+            } else if (Date.now() - root.lastGpuUpdate > 5000) {
+                root.gpus = root.gpus.map(root.unavailableGpu);
+                gpuProc.signal(9);
+            }
+        }
     }
 
     Process {
